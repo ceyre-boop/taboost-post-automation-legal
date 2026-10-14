@@ -3,6 +3,21 @@ import type { Platform, PostInput } from "./types.ts";
 
 const UPLOAD_URL = "https://www.tiktok.com/tiktokstudio/upload";
 
+/** TikTok Studio shows one-off prompts (content checks, tips). Dismiss without changing the user's settings. */
+async function dismissModals(page: Page, log: (m: string) => void): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    const btn = page
+      .locator('.TUXModal-overlay button, [role="dialog"] button')
+      .filter({ hasText: /^(Cancel|Not now|Skip|Got it|Close|Maybe later)$/i })
+      .first();
+    if (!(await btn.isVisible().catch(() => false))) return;
+    const text = (await btn.innerText()).trim();
+    await btn.click();
+    log(`Dismissed a TikTok prompt ("${text}").`);
+    await page.waitForTimeout(500);
+  }
+}
+
 export const tiktok: Platform = {
   id: "tiktok",
   loginUrl: "https://www.tiktok.com/login",
@@ -22,11 +37,13 @@ export const tiktok: Platform = {
     await fileInput.waitFor({ state: "attached", timeout: 30_000 });
     await fileInput.setInputFiles(input.video);
     log("Video handed to the uploader, waiting for processing...");
+    await dismissModals(page, log);
 
     const editor = page
       .locator('[contenteditable="true"], .public-DraftEditor-content, div[data-e2e="caption-input"] [contenteditable]')
       .first();
     await editor.waitFor({ state: "visible", timeout: 120_000 });
+    await dismissModals(page, log);
     await editor.click();
     await page.keyboard.press("Meta+A");
     await page.keyboard.press("Backspace");
@@ -45,6 +62,7 @@ export const tiktok: Platform = {
       { timeout: 300_000 },
     );
 
+    await dismissModals(page, log);
     if (input.dryRun) {
       log("DRY RUN: everything is filled in. Not clicking Post. Re-run with --live to publish.");
       return;
