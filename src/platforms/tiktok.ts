@@ -7,8 +7,8 @@ const UPLOAD_URL = "https://www.tiktok.com/tiktokstudio/upload";
 async function dismissModals(page: Page, log: (m: string) => void): Promise<void> {
   for (let i = 0; i < 3; i++) {
     const btn = page
-      .locator('.TUXModal-overlay button, [role="dialog"] button')
-      .filter({ hasText: /^(Cancel|Not now|Skip|Got it|Close|Maybe later)$/i })
+      .locator('.TUXModal-overlay button, [role="dialog"] button, #react-joyride-portal button, .react-joyride__tooltip button')
+      .filter({ hasText: /^(Cancel|Not now|Skip|Got it|Close|Maybe later|OK)$/i })
       .first();
     if (!(await btn.isVisible().catch(() => false))) return;
     const text = (await btn.innerText()).trim();
@@ -50,7 +50,7 @@ export const tiktok: Platform = {
     await page.keyboard.type(input.caption, { delay: 20 });
     log("Caption typed.");
 
-    const postBtn = page.locator('button[data-e2e="post_video_button"], button:has-text("Post")').first();
+    const postBtn = page.locator('button[data-e2e="post_video_button"], button:text-is("Post")').first();
     await postBtn.waitFor({ state: "visible", timeout: 180_000 });
     // The button stays disabled until TikTok finishes processing the upload.
     await page.waitForFunction(
@@ -63,13 +63,42 @@ export const tiktok: Platform = {
     );
 
     await dismissModals(page, log);
+    // Give TikTok's copyright / content check up to 90s to finish so we post with a completed check.
+    const checking = page.getByText(/checking your video|check in progress|Checking/i).first();
+    if (await checking.isVisible().catch(() => false)) {
+      log("Waiting for TikTok's copyright check to finish (up to 90s)...");
+      await checking.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => log("Check still running, continuing anyway."));
+    }
     if (input.dryRun) {
       log("DRY RUN: everything is filled in. Not clicking Post. Re-run with --live to publish.");
       return;
     }
     await postBtn.click();
-    log("Post clicked. Waiting for confirmation...");
-    await page.waitForURL(/tiktokstudio\/content|upload\?success|\/content/i, { timeout: 120_000 }).catch(() => {});
-    log("Done.");
+    log("Post clicked. Waiting for TikTok to confirm...");
+    // If the check is still incomplete TikTok asks "Continue to post?" — answer Post now.
+    const postNow = page.locator('[role="dialog"] button, .TUXModal-overlay button').filter({ hasText: /^Post now$/i }).first();
+    if (await postNow.isVisible({ timeout: 4000 }).catch(() => false)) {
+      await postNow.click();
+      log('Confirmed "Post now" on the copyright-check prompt.');
+    }
+    // Success = TikTok leaves the upload page, or shows its "uploaded" dialog. Anything else is NOT a post.
+    const confirmed = await Promise.race([
+      page.waitForURL(/tiktokstudio\/content/i, { timeout: 120_000 }).then(() => "redirected to Posts"),
+      page
+        .locator('[role="dialog"], .TUXModal-overlay')
+        .filter({ hasText: /uploaded|posted|being uploaded|Manage your posts|View post/i })
+        .first()
+        .waitFor({ state: "visible", timeout: 120_000 })
+        .then(() => "upload dialog shown"),
+    ]).catch(() => null);
+    if (!confirmed) {
+      const leftover = await page
+        .locator('[role="dialog"], .TUXModal-overlay, #react-joyride-portal')
+        .first()
+        .innerText()
+        .catch(() => "");
+      throw new Error(`Post clicked but TikTok never confirmed. Still on ${page.url()}. On screen: ${leftover.slice(0, 200).replace(/\n+/g, " / ") || "nothing"}`);
+    }
+    log(`Published (${confirmed}).`);
   },
 };
