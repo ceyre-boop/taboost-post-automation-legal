@@ -20,7 +20,9 @@ async function dismissModals(page: Page, log: (m: string) => void): Promise<void
 
 export const tiktok: Platform = {
   id: "tiktok",
+  label: "TikTok",
   loginUrl: "https://www.tiktok.com/login",
+  host: /tiktok\.com/,
 
   async isLoggedIn(page: Page): Promise<boolean> {
     // TikTok sets sessionid / sid_tt on .tiktok.com once a login completes.

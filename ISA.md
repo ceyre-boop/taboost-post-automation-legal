@@ -38,7 +38,10 @@ Anyone installs the tool, logs into TikTok (and later other platforms) themselve
 - [x] ISC-3: Login detection is cookie-based, read from the live context, never persisted by us. Probe: `grep -r cookies src` shows only `context().cookies()` reads; no file writes.
 - [x] ISC-4: `login` waits until the user signs in, then reports success. Probe: `status` → `tiktok: logged in`. PASSED 2026-10-14 12:34.
 - [x] ISC-5: `post` (dry run) opens TikTok Studio upload, attaches the file, types the caption, waits for Post to enable, and stops without clicking. Probe: real mp4, final log line is the DRY RUN line, screenshot shows caption + preview + Post enabled. PASSED 2026-10-14 12:35.
-- [ ] ISC-6: `post --live` publishes and records `posted` in `history.db`. Probe: `sqlite3 history.db 'select * from posts'`. HUMAN DECIDES WHEN.
+- [x] ISC-6: `post --live` publishes and records `posted` in `history.db`. PASSED 2026-10-14 12:49: TikTok Studio Posts list went 0 → 1 ("test").
+- [x] ISC-9: Dashboard at http://127.0.0.1:4747 shows per-platform login state, Connect opens the login tab in the tool's Chrome, the post form fans out to selected platforms with a live job log. Probe: `bun run dashboard`; API dry-run job for TikTok finished `dry-run` in 24s. PASSED 2026-10-14 12:52.
+- [ ] ISC-10: Instagram adapter dry run passes on a live account. Adapter written, UNVERIFIED.
+- [ ] ISC-11: YouTube adapter dry run passes on a live channel. Adapter written, UNVERIFIED.
 - [x] ISC-7: Unknown platform id fails with the list of known ones. Probe: `getPlatform("x")` throws.
 - [x] ISC-8: Typecheck clean. Probe: `bunx tsc --noEmit`.
 - Anti-1: No file under `src/` reads or writes a password or token. Probe: `grep -riE "password|token|sessionid" src` matches only the cookie-name check in tiktok.ts.
@@ -49,9 +52,10 @@ Live probes against the real Chrome on this machine. Selectors on TikTok Studio 
 
 ## Features
 - F1 Chrome launcher and CDP attach (`src/chrome.ts`). DONE.
-- F2 Platform interface, TikTok first (`src/platforms/`). TikTok written, unverified on the live upload page.
+- F2 Platform interface (`src/platforms/`). TikTok VERIFIED live. Instagram + YouTube written, unverified.
 - F3 CLI: `login`, `status`, `post` (`src/cli.ts`). DONE.
 - F4 Local post history, SQLite via `node:sqlite` (`src/history.ts`). DONE.
+- F6 Dashboard (`src/server.ts`, `dashboard/index.html`): accounts, connect, post form, job log, history. DONE.
 - F5 Next: Instagram and YouTube adapters; a small desktop UI (RnR uses customtkinter; ours can be Tauri or Electron around this same core); schedule window and daily limit like RnR's `message_limit` / `time_start` / `time_end`.
 
 ## Decisions
@@ -62,6 +66,8 @@ Live probes against the real Chrome on this machine. Selectors on TikTok Studio 
 - 2026-10-14 The legal HTML pages stay in this repo for now so the GitHub Pages URL keeps working; the tool lives alongside in `src/`.
 
 ## Changelog
+- 2026-10-14 Conjecture: `button:has-text("Post")` is a safe fallback. Refutation: it matched the sidebar "Posts" first; two live runs clicked the wrong button and the tool reported "Done" anyway. Learning: exact-text selectors only, and "published" requires a positive signal (redirect to Posts or an upload dialog), never a timeout.
+- 2026-10-14 TikTok asks "Continue to post?" when its copyright check is mid-run. Adapter now waits up to 90s for the check and answers "Post now" if still asked.
 - 2026-10-14 TikTok Studio shows a one-off "Turn on automatic content checks?" modal that intercepts clicks. Added `dismissModals` (clicks Cancel/Not now/Skip only, never changes settings). Dry run then passed in 21s.
 - 2026-10-14 First login attempts failed because the Wi-Fi had a Fortinet firewall MITM-ing tiktok.com (NET::ERR_CERT_AUTHORITY_INVALID). Not a tool bug; switched network.
 - 2026-10-14 Conjecture: Bun can run the whole tool. Refutation: `connectOverCDP` timed out under Bun twice, raw websocket from Bun worked, Node + same playwright-core connected at once. Learning: the fault is in playwright-core's ws path under Bun, not Chrome or the flags.

@@ -1,0 +1,131 @@
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join, dirname, extname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
+import { APP_DIR, CDP_PORT } from "./config.ts";
+import { withBrowser, pageFor } from "./browser.ts";
+import { PLATFORMS, getPlatform } from "./platforms/index.ts";
+import { openHistory, recordPost } from "./history.ts";
+
+const PORT = Number(process.env.POSTER_PORT ?? 4747);
+const UPLOADS = join(APP_DIR, "uploads");
+const HTML = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "dashboard", "index.html"));
+
+interface Job {
+  id: string;
+  status: "running" | "done";
+  log: string[];
+  results: Record<string, "posted" | "dry-run" | string>;
+}
+const jobs = new Map<string, Job>();
+
+async function status() {
+  return withBrowser(async (ctx) => {
+    const out: Record<string, { label: string; loggedIn: boolean }> = {};
+    for (const p of Object.values(PLATFORMS)) {
+      const page = ctx.pages()[0] ?? (await ctx.newPage());
+      out[p.id] = { label: p.label, loggedIn: await p.isLoggedIn(page).catch(() => false) };
+    }
+    return out;
+  });
+}
+
+async function openLogin(platformId: string) {
+  const p = getPlatform(platformId);
+  await withBrowser(async (ctx) => {
+    const page = await pageFor(ctx, p.host);
+    await page.goto(p.loginUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
+    await page.bringToFront();
+    const s = await ctx.newCDPSession(page);
+    const { windowId } = await s.send("Browser.getWindowForTarget");
+    await s.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } });
+  }, p.loginUrl);
+}
+
+function runJob(video: string, caption: string, platformIds: string[], live: boolean): Job {
+  const job: Job = { id: Date.now().toString(36), status: "running", log: [], results: {} };
+  jobs.set(job.id, job);
+  const log = (m: string) => job.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
+  (async () => {
+    for (const id of platformIds) {
+      const p = getPlatform(id);
+      log(`▶ ${p.label}`);
+      try {
+        await withBrowser(async (ctx) => {
+          const page = await pageFor(ctx, p.host);
+          if (!(await p.isLoggedIn(page))) throw new Error(`not logged in to ${p.label}. Click Connect first.`);
+          await page.bringToFront();
+          await p.post(page, { video, caption, dryRun: !live }, (m) => log(`  ${m}`));
+        });
+        job.results[id] = live ? "posted" : "dry-run";
+      } catch (e) {
+        job.results[id] = `error: ${(e as Error).message.split("\n")[0]}`;
+        log(`  ✖ ${job.results[id]}`);
+      }
+      recordPost(id, video, caption, job.results[id]);
+    }
+    job.status = "done";
+    log("Finished.");
+  })();
+  return job;
+}
+
+function json(res: ServerResponse, code: number, body: unknown) {
+  res.writeHead(code, { "content-type": "application/json" });
+  res.end(JSON.stringify(body));
+}
+
+async function readBody(req: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  return Buffer.concat(chunks);
+}
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url ?? "/", `http://127.0.0.1:${PORT}`);
+  try {
+    if (req.method === "GET" && url.pathname === "/") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      return res.end(HTML);
+    }
+    if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, await status());
+    if (req.method === "POST" && url.pathname === "/api/login") {
+      const { platform } = JSON.parse((await readBody(req)).toString() || "{}");
+      await openLogin(platform);
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === "POST" && url.pathname === "/api/post") {
+      const body = await readBody(req);
+      const form = await new Response(new Uint8Array(body), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
+      const file = form.get("video");
+      if (!(file instanceof File) || file.size === 0) return json(res, 400, { error: "pick a video" });
+      const platformIds = form.getAll("platforms").map(String);
+      if (!platformIds.length) return json(res, 400, { error: "pick at least one platform" });
+      mkdirSync(UPLOADS, { recursive: true });
+      const dest = join(UPLOADS, `${Date.now()}${extname(file.name) || ".mp4"}`);
+      writeFileSync(dest, Buffer.from(await file.arrayBuffer()));
+      const job = runJob(dest, String(form.get("caption") ?? ""), platformIds, form.get("live") === "on");
+      return json(res, 200, { id: job.id });
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/api/jobs/")) {
+      const job = jobs.get(url.pathname.split("/").pop()!);
+      return job ? json(res, 200, job) : json(res, 404, { error: "no such job" });
+    }
+    if (req.method === "GET" && url.pathname === "/api/history") {
+      const db = openHistory();
+      const rows = db.prepare("SELECT id, platform, video, caption, status, posted_at FROM posts ORDER BY id DESC LIMIT 50").all();
+      db.close();
+      return json(res, 200, rows);
+    }
+    json(res, 404, { error: "not found" });
+  } catch (e) {
+    json(res, 500, { error: (e as Error).message });
+  }
+});
+
+server.listen(PORT, "127.0.0.1", () => {
+  const u = `http://127.0.0.1:${PORT}`;
+  console.log(`TABOOST Poster dashboard: ${u}  (Chrome CDP :${CDP_PORT})`);
+  if (!process.argv.includes("--no-open")) spawn("open", [u], { stdio: "ignore" }).unref();
+});
