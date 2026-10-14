@@ -25,7 +25,9 @@ async function cmdLogin(platformId: string): Promise<void> {
     log(`${platform.id}: log in inside the Chrome window that just opened. Waiting (up to 10 min)...`);
     const deadline = Date.now() + 10 * 60_000;
     while (Date.now() < deadline && !(await platform.isLoggedIn(page))) await sleep(2000);
-    log((await platform.isLoggedIn(page)) ? "Logged in. Session saved in the Chrome profile." : "Timed out waiting for login.");
+    const ok = await platform.isLoggedIn(page);
+    log(ok ? "Logged in. Session saved in the Chrome profile." : "Timed out waiting for login. Run login again when you are ready.");
+    if (!ok) process.exitCode = 2;
   }
   await browser.close(); // detaches only; the Chrome window stays open
 }
