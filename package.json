@@ -1,0 +1,19 @@
+{
+  "name": "taboost-poster",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "login": "node src/cli.ts login",
+    "status": "node src/cli.ts status",
+    "post": "node src/cli.ts post",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "playwright-core": "^1.52.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.6.0"
+  }
+}
