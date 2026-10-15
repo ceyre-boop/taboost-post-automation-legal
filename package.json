@@ -8,6 +8,7 @@
     "status": "node src/cli.ts status",
     "post": "node src/cli.ts post",
     "weekly": "node src/weekly/build.ts",
+    "tip": "node src/weekly/tip-build.ts",
     "weekly:list": "node src/weekly/list.ts",
     "weekly:approve": "node src/weekly/approve.ts",
     "test": "node --test src/weekly/weekly.test.ts",

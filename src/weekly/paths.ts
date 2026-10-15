@@ -14,8 +14,13 @@ export type JobStatus = "awaiting_approval" | "posted" | "skipped" | "error";
 export interface Job {
   id: string;
   createdAt: string;
+  /** "product" (ProductSpot) or "tip" (CreatorTip teaching video). Defaults to product. */
+  kind?: "product" | "tip";
+  /** product id, or lesson slug for a tip */
   productId: string;
+  /** product name, or lesson hook for a tip */
   productName: string;
+  /** product brand, or lesson source for a tip */
   brand: string;
   caption: string;
   videoPath: string;

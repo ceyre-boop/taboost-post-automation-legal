@@ -34,14 +34,33 @@ export async function stageImage(imageUrl: string, jobId: string): Promise<strin
   }
 }
 
-/** Render the ProductSpot composition with the given props to outPath (abs .mp4). */
-export function renderSpot(props: SpotProps, outPath: string): void {
-  const propsFile = join(mkdtempSync(join(tmpdir(), "taboost-spot-")), "props.json");
+/** Render a Remotion composition with the given props to outPath (abs .mp4). */
+function render(composition: string, props: unknown, outPath: string): void {
+  const propsFile = join(mkdtempSync(join(tmpdir(), "taboost-render-")), "props.json");
   writeFileSync(propsFile, JSON.stringify(props));
   const r = spawnSync(
     "bunx",
-    ["remotion", "render", "src/index.ts", "ProductSpot", outPath, `--props=${propsFile}`],
+    ["remotion", "render", "src/index.ts", composition, outPath, `--props=${propsFile}`],
     { cwd: VIDEO_DIR, stdio: "inherit", env: process.env },
   );
   if (r.status !== 0) throw new Error(`remotion render exited ${r.status ?? r.signal}`);
+}
+
+/** Render the ProductSpot composition with the given props to outPath (abs .mp4). */
+export function renderSpot(props: SpotProps, outPath: string): void {
+  render("ProductSpot", props, outPath);
+}
+
+export interface TipProps {
+  source: string;
+  hook: string;
+  tips: { title: string; body: string }[];
+  cta: string;
+  ctaSub: string;
+  voiceFile: string;
+}
+
+/** Render the CreatorTip (teaching) composition to outPath (abs .mp4). */
+export function renderTip(props: TipProps, outPath: string): void {
+  render("CreatorTip", props, outPath);
 }
