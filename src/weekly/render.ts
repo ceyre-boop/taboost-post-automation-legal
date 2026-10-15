@@ -1,18 +1,25 @@
 import { spawnSync } from "node:child_process";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { VIDEO_PUBLIC } from "./paths.ts";
 import type { SpotProps } from "./draft.ts";
 
-const VIDEO_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "video");
+// Single source of truth for the Remotion project location. staticFile() resolves
+// from VIDEO_DIR/public, so images MUST be staged into exactly this dir.
+export const VIDEO_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "video");
+export const VIDEO_PUBLIC = join(VIDEO_DIR, "public");
 
 /** Download the official product photo into the Remotion public/ dir.
  *  Returns the staticFile name to put in props, or "" if it could not be fetched. */
 export async function stageImage(imageUrl: string, jobId: string): Promise<string> {
   if (!imageUrl) return "";
   try {
+    mkdirSync(VIDEO_PUBLIC, { recursive: true });
+    // Remove prior staged photos so public/ doesn't grow unbounded.
+    for (const f of readdirSync(VIDEO_PUBLIC)) {
+      if (f.startsWith("product-")) rmSync(join(VIDEO_PUBLIC, f), { force: true });
+    }
     const res = await fetch(imageUrl, { redirect: "follow" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const ct = res.headers.get("content-type") ?? "";

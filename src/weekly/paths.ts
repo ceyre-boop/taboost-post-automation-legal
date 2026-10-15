@@ -1,13 +1,13 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { APP_DIR } from "../config.ts";
+import { VIDEO_PUBLIC } from "./render.ts";
 
 export const WEEKLY_DIR = join(APP_DIR, "weekly");
 export const JOBS_DIR = join(WEEKLY_DIR, "jobs");
 export const FEATURED_FILE = join(WEEKLY_DIR, "featured.json");
-/** public/ of the Remotion project, where the product photo is staged for render. */
-export const VIDEO_PUBLIC = join(homedir(), "taboost-post-automation-legal", "video", "public");
+/** public/ of the Remotion project, where the product photo is staged (re-exported). */
+export { VIDEO_PUBLIC };
 
 export type JobStatus = "awaiting_approval" | "posted" | "skipped" | "error";
 

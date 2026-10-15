@@ -93,6 +93,8 @@ export function pickProduct(featured: Set<string>): Product | undefined {
   const eligible = loadProducts().filter(
     (p) => p.imageUrl && p.name && !featured.has(p.id) && p.itemsSold > 0,
   );
-  eligible.sort((a, b) => b.itemsSold - a.itemsSold || a.rank - b.rank);
+  // Most units sold; ties to the better (lower) rank, treating missing rank (0) as worst.
+  const rk = (n: number) => (n > 0 ? n : Number.MAX_SAFE_INTEGER);
+  eligible.sort((a, b) => b.itemsSold - a.itemsSold || rk(a.rank) - rk(b.rank));
   return eligible[0];
 }

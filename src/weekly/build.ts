@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { loadProducts, pickProduct, type Product } from "./catalog.ts";
 import { draftSpot, draftCaption } from "./draft.ts";
 import { stageImage, renderSpot } from "./render.ts";
-import { ensureWeeklyDirs, loadFeatured, saveJob, JOBS_DIR, type Job } from "./paths.ts";
+import { ensureWeeklyDirs, loadFeatured, saveJob, listJobs, JOBS_DIR, type Job } from "./paths.ts";
 import { voice } from "./notify.ts";
 
 const arg = (name: string): string | undefined => {
@@ -24,12 +24,27 @@ async function main(): Promise<void> {
   const id = jobId();
 
   const forced = arg("product");
+
+  // Don't stack work: if a video is already staged and un-approved, stop here
+  // (unless --product forces a specific one). Also never re-pick a product that
+  // already has an open job.
+  const pending = listJobs().filter((j) => j.status === "awaiting_approval");
+  if (!forced && pending.length > 0) {
+    console.log(`[build] ${pending.length} video(s) already awaiting your approval — not building another:`);
+    for (const j of pending) console.log(`  ⏳ ${j.id}  ${j.productName} (${j.brand})`);
+    console.log(`Resolve first: node src/weekly/approve.ts <id> --live   (or --skip)`);
+    return;
+  }
+
+  const exclude = loadFeatured();
+  for (const j of pending) exclude.add(j.productId);
+
   let product: Product | undefined;
   if (forced) {
     product = loadProducts().find((p) => p.id === forced);
     if (!product) throw new Error(`No product with id ${forced} in the catalog`);
   } else {
-    product = pickProduct(loadFeatured());
+    product = pickProduct(exclude);
   }
   if (!product) throw new Error("No eligible product (all featured, or none with a photo + sales).");
 

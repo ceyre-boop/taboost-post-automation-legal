@@ -10,6 +10,7 @@
     "weekly": "node src/weekly/build.ts",
     "weekly:list": "node src/weekly/list.ts",
     "weekly:approve": "node src/weekly/approve.ts",
+    "test": "node --test src/weekly/weekly.test.ts",
     "typecheck": "bunx tsc --noEmit",
     "dashboard": "node src/server.ts"
   },
