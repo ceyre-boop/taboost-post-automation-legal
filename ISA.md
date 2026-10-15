@@ -16,7 +16,11 @@ Anyone installs the tool, logs into TikTok (and later other platforms) themselve
 - Any server-side storage of user sessions or credentials.
 - Bypassing captchas, rate limits or bot detection. If the platform asks for a puzzle, the user solves it in the window.
 - Mass or multi-account posting from one machine.
-- Content generation. The tool posts what it is given.
+- ~~Content generation. The tool posts what it is given.~~ **Amended 2026-10-15:** the Weekly
+  Video pipeline (`src/weekly/`, `video/`) now *generates* one official TABOOST product
+  video per week from real catalog data. Scope stays narrow: it is the account owner's own
+  brand, own products, own numbers — a templated motion-graphics spot, not AI-generated
+  footage, not third-party or deceptive content. The core poster is still content-agnostic.
 
 ## Principles
 - The person owns the login. The tool only owns the clicks.

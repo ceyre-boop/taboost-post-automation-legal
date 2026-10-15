@@ -1,2 +1,6 @@
 .DS_Store
 node_modules
+video/node_modules
+video/public/product-*
+video/out
+*.mp4

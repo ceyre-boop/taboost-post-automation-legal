@@ -7,6 +7,9 @@
     "login": "node src/cli.ts login",
     "status": "node src/cli.ts status",
     "post": "node src/cli.ts post",
+    "weekly": "node src/weekly/build.ts",
+    "weekly:list": "node src/weekly/list.ts",
+    "weekly:approve": "node src/weekly/approve.ts",
     "typecheck": "bunx tsc --noEmit",
     "dashboard": "node src/server.ts"
   },
