@@ -74,16 +74,18 @@ function runJob(video: string, caption: string, platformIds: string[], live: boo
 
 interface BatchRun { batch: Batch; log: string[]; done: boolean; }
 const batches = new Map<string, BatchRun>();
+let batchRunning = false; // one batch at a time, so spacing is never defeated by overlap
 
 function startBatch(videos: { path: string; caption?: string }[], platformIds: string[], live: boolean, spaceSec: number, sharedCaption: string): BatchRun {
   const batch = buildBatch({ videos, platforms: platformIds, live, spaceSec, sharedCaption });
   const entry: BatchRun = { batch, log: [], done: false };
   batches.set(batch.id, entry);
+  batchRunning = true;
   const log = (m: string) => entry.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
   (async () => {
     try { await runBatchEngine(batch, log, (b) => { entry.batch = b; }); }
     catch (e) { log(`ERROR: ${(e as Error).message}`); }
-    entry.done = true;
+    finally { entry.done = true; batchRunning = false; }
   })();
   return entry;
 }
@@ -130,20 +132,25 @@ const server = createServer(async (req, res) => {
       return job ? json(res, 200, job) : json(res, 404, { error: "no such job" });
     }
     if (req.method === "POST" && url.pathname === "/api/batch") {
+      if (batchRunning) return json(res, 409, { error: "A batch is already running — wait for it to finish." });
       const body = await readBody(req);
       const form = await new Response(new Uint8Array(body), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
-      const files = form.getAll("videos").filter((f): f is File => f instanceof File && f.size > 0);
-      if (!files.length) return json(res, 400, { error: "pick at least one video" });
       const platformIds = form.getAll("platforms").map(String);
       if (!platformIds.length) return json(res, 400, { error: "pick at least one platform" });
+      try { for (const id of platformIds) getPlatform(id); } // validate before writing any file
+      catch (e) { return json(res, 400, { error: (e as Error).message }); }
       mkdirSync(UPLOADS, { recursive: true });
+      const all = form.getAll("videos");
       const videos: { path: string; caption?: string }[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const dest = join(UPLOADS, `${Date.now()}-${i}${extname(files[i].name) || ".mp4"}`);
-        writeFileSync(dest, Buffer.from(await files[i].arrayBuffer()));
+      for (let i = 0; i < all.length; i++) {
+        const f = all[i];
+        if (!(f instanceof File) || f.size === 0) continue; // keep the ORIGINAL index so captions stay aligned
+        const dest = join(UPLOADS, `${Date.now()}-${i}${extname(f.name) || ".mp4"}`);
+        writeFileSync(dest, Buffer.from(await f.arrayBuffer()));
         const per = String(form.get(`caption${i}`) ?? "").trim();
         videos.push({ path: dest, caption: per || undefined });
       }
+      if (!videos.length) return json(res, 400, { error: "pick at least one video" });
       const entry = startBatch(videos, platformIds, form.get("live") === "on", Number(form.get("space")) || 60, String(form.get("caption") ?? ""));
       return json(res, 200, { id: entry.batch.id });
     }

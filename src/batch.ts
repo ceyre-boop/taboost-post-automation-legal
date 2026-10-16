@@ -115,17 +115,26 @@ export async function loggedInPlatforms(): Promise<string[]> {
   });
 }
 
-async function postItem(item: BatchItem, live: boolean, log: (m: string) => void): Promise<void> {
+async function postOnPage(
+  ctx: import("playwright-core").BrowserContext,
+  item: BatchItem,
+  live: boolean,
+  log: (m: string) => void,
+): Promise<void> {
   const platform = getPlatform(item.platform);
-  await withBrowser(async (ctx) => {
-    const page = await pageFor(ctx, platform.host);
-    if (!(await platform.isLoggedIn(page))) throw new Error(`Not logged in to ${platform.label}. Connect it first.`);
-    await page.bringToFront();
-    await platform.post(page, { video: item.video, caption: item.caption, dryRun: !live }, log);
-  });
+  const page = await pageFor(ctx, platform.host);
+  if (!(await platform.isLoggedIn(page))) throw new Error(`Not logged in to ${platform.label}. Connect it first.`);
+  await page.bringToFront().catch(() => {}); // cosmetic; harmless if another tab is also fronting
+  await platform.post(page, { video: item.video, caption: item.caption, dryRun: !live }, log);
 }
 
-/** Run (or resume) a batch: post every pending/error item, spacing LIVE posts. */
+/**
+ * Run (or resume) a batch. For speed, every platform for a given clip is posted
+ * IN PARALLEL (one tab each, within one Chrome session); clips are processed in
+ * order. LIVE posts are paced PER-PLATFORM: we only wait if the same account
+ * posted less than `spaceSec` ago — time spent on other platforms counts, so
+ * multi-platform batches rarely wait at all.
+ */
 export async function runBatch(
   batch: Batch,
   log: (m: string) => void = () => {},
@@ -134,36 +143,45 @@ export async function runBatch(
   const todo = batch.items.filter((i) => i.status === "pending" || i.status === "error");
   if (!todo.length) { log("Nothing to do — all items already done."); return batch; }
 
-  for (let n = 0; n < todo.length; n++) {
-    const item = todo[n];
-    const label = `${basename(item.video)} → ${item.platform}`;
-    item.status = "posting"; item.note = undefined;
-    saveBatch(batch); onUpdate(batch);
-    log(`▶ ${batch.live ? "" : "(dry) "}${label}`);
-    try {
-      await postItem(item, batch.live, (m) => log(`   ${m}`));
-      item.status = "done";
-      recordPost(item.platform, item.video, item.caption, batch.live ? "posted" : "dry-run");
-      log(`✓ ${label}`);
-    } catch (e) {
-      item.status = "error";
-      item.note = (e as Error).message.split("\n")[0];
-      recordPost(item.platform, item.video, item.caption, `error: ${item.note}`);
-      log(`✖ ${label} — ${item.note}`);
-    }
-    saveBatch(batch); onUpdate(batch);
-
-    // Space out LIVE posts so the account doesn't look like a spam cannon.
-    if (batch.live && item.status === "done") {
-      const isLast = n === todo.length - 1;
-      if (!isLast) {
-        const jitter = 0.5 + Math.random(); // 0.5×–1.5× the base delay
-        const waitMs = Math.round(batch.spaceSec * 1000 * jitter);
-        log(`   …waiting ${Math.round(waitMs / 1000)}s before the next post`);
-        await sleep(waitMs);
-      }
-    }
+  // Group remaining items by clip, preserving order.
+  const groups: { video: string; items: BatchItem[] }[] = [];
+  for (const it of todo) {
+    let g = groups.find((x) => x.video === it.video);
+    if (!g) { g = { video: it.video, items: [] }; groups.push(g); }
+    g.items.push(it);
   }
+  const lastPost: Record<string, number> = {}; // platform -> ms of last live post
+
+  await withBrowser(async (ctx) => {
+    for (const group of groups) {
+      const name = basename(group.video);
+      await Promise.all(group.items.map(async (item) => {
+        // Pace repeats to the SAME account only (live).
+        if (batch.live && lastPost[item.platform]) {
+          const jitter = 0.75 + Math.random() * 0.5; // 0.75×–1.25×
+          const wait = Math.round(batch.spaceSec * 1000 * jitter) - (Date.now() - lastPost[item.platform]);
+          if (wait > 0) { log(`   …pacing ${item.platform}: ${Math.round(wait / 1000)}s`); await sleep(wait); }
+        }
+        item.status = "posting"; item.note = undefined;
+        saveBatch(batch); onUpdate(batch);
+        log(`▶ ${batch.live ? "" : "(dry) "}${name} → ${item.platform}`);
+        try {
+          await postOnPage(ctx, item, batch.live, (m) => log(`   [${item.platform}] ${m}`));
+          item.status = "done";
+          recordPost(item.platform, item.video, item.caption, batch.live ? "posted" : "dry-run");
+          if (batch.live) lastPost[item.platform] = Date.now();
+          log(`✓ ${name} → ${item.platform}`);
+        } catch (e) {
+          item.status = "error";
+          item.note = (e as Error).message.split("\n")[0];
+          recordPost(item.platform, item.video, item.caption, `error: ${item.note}`);
+          log(`✖ ${name} → ${item.platform} — ${item.note}`);
+        }
+        saveBatch(batch); onUpdate(batch);
+      }));
+    }
+  });
+
   const done = batch.items.filter((i) => i.status === "done").length;
   const err = batch.items.filter((i) => i.status === "error").length;
   log(`Finished: ${done} done, ${err} error${err === 1 ? "" : "s"} of ${batch.items.length}.`);
