@@ -36,8 +36,11 @@ export const instagram: Platform = {
     for (let i = 0; i < 2; i++) {
       const next = page.locator('[role="dialog"] [role="button"]:text-is("Next"), [role="dialog"] button:text-is("Next")').first();
       await next.waitFor({ state: "visible", timeout: 120_000 });
-      await next.click();
-      await page.waitForTimeout(1000);
+      // Instagram nests the clickable Next inside another role=button div, so a strict
+      // click fails the hit-test ("subtree intercepts pointer events"). The topmost
+      // element at the button's center IS the Next button, so a forced click is correct.
+      await next.click({ force: true });
+      await page.waitForTimeout(1500);
     }
     const caption = page.locator('[role="dialog"] [aria-label="Write a caption..."], [role="dialog"] [contenteditable="true"]').first();
     await caption.waitFor({ state: "visible", timeout: 30_000 });
@@ -51,7 +54,7 @@ export const instagram: Platform = {
       log("DRY RUN: ready to share. Not clicking Share.");
       return;
     }
-    await share.click();
+    await share.click({ force: true });
     log("Share clicked. Waiting for Instagram to confirm...");
     await page.getByText(/has been shared|Post shared|Reel shared/i).first().waitFor({ state: "visible", timeout: 180_000 });
     log("Published.");

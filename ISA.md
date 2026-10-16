@@ -44,7 +44,7 @@ Anyone installs the tool, logs into TikTok (and later other platforms) themselve
 - [x] ISC-5: `post` (dry run) opens TikTok Studio upload, attaches the file, types the caption, waits for Post to enable, and stops without clicking. Probe: real mp4, final log line is the DRY RUN line, screenshot shows caption + preview + Post enabled. PASSED 2026-10-14 12:35.
 - [x] ISC-6: `post --live` publishes and records `posted` in `history.db`. PASSED 2026-10-14 12:49: TikTok Studio Posts list went 0 → 1 ("test").
 - [x] ISC-9: Dashboard at http://127.0.0.1:4747 shows per-platform login state, Connect opens the login tab in the tool's Chrome, the post form fans out to selected platforms with a live job log. Probe: `bun run dashboard`; API dry-run job for TikTok finished `dry-run` in 24s. PASSED 2026-10-14 12:52.
-- [ ] ISC-10: Instagram adapter dry run passes on a live account. Adapter written, UNVERIFIED.
+- [x] ISC-10: Instagram adapter dry run passes on a live account. PASSED 2026-10-15: logged in as a real account (human passes IG's one-time "are you human" check in the window), dry run drove Create → attach video → Crop → Next → Next → caption → stopped on the Reel "Share" screen with the caption filled. Fix: IG nests the clickable Next/Share inside another role=button div, so strict clicks fail the hit-test; `click({ force: true })` lands on the real button (the topmost element at its center IS the button). IG now publishes these as Reels.
 - [ ] ISC-11: YouTube adapter dry run passes on a live channel. Adapter written, UNVERIFIED.
 - [x] ISC-7: Unknown platform id fails with the list of known ones. Probe: `getPlatform("x")` throws.
 - [x] ISC-8: Typecheck clean. Probe: `bunx tsc --noEmit`.
