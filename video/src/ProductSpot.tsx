@@ -42,31 +42,13 @@ const fadeUp = (frame: number, start: number, dur = 18) => {
   return { opacity: o, transform: `translateY(${y}px)` };
 };
 
+// The real TABOOST mark. Black-on-transparent asset; on dark backgrounds we
+// knock it to white with a filter. `dark` = sitting on a light card (keep black).
 const Logo: React.FC<{ size?: number; dark?: boolean }> = ({ size = 54, dark }) => (
-  <div
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 14,
-      fontFamily,
-      fontWeight: 800,
-      fontSize: size,
-      letterSpacing: -1.5,
-      color: dark ? BRAND.ink : BRAND.paper,
-    }}
-  >
-    <span>TAB</span>
-    <span
-      style={{
-        width: size * 0.62,
-        height: size * 0.62,
-        borderRadius: "50%",
-        background: dark ? BRAND.teal : BRAND.paper,
-        display: "inline-block",
-      }}
-    />
-    <span>OST</span>
-  </div>
+  <Img
+    src={staticFile("taboost-mark.png")}
+    style={{ height: size * 1.5, width: "auto", filter: dark ? "none" : "brightness(0) invert(1)" }}
+  />
 );
 
 // ---- Scene 1: Hook ----------------------------------------------------------

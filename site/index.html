@@ -23,7 +23,9 @@
   a{color:inherit;text-decoration:none}
   .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
   .logo{display:inline-flex;align-items:center;gap:9px;font-weight:900;font-size:22px;letter-spacing:-1px}
-  .logo .dot{width:13px;height:13px;border-radius:50%;background:var(--teal);display:inline-block}
+  .logo .mark{height:1.25em;width:auto;display:inline-block}
+  .plogo .mark{height:1.3em;width:auto;display:inline-block}
+  .wmark{filter:brightness(0) invert(1)}
   .btn{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:16px;padding:13px 22px;border-radius:999px;border:0;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease}
   .btn:active{transform:translateY(1px)}
   .btn-primary{background:var(--teal);color:#fff;box-shadow:0 8px 24px rgba(0,153,153,.28)}
@@ -124,7 +126,7 @@
 <body>
 
 <nav><div class="wrap">
-  <div class="logo">TAB<span class="dot"></span>OOST</div>
+  <div class="logo"><img src="taboost-mark.png" class="mark" alt="TABOOST"/>TABOOST</div>
   <div class="links">
     <a href="#how">How it works</a>
     <a href="#video">Weekly video</a>
@@ -174,7 +176,7 @@
       </ul>
     </div>
     <div class="phone">
-      <div class="plogo">TAB<span class="d"></span>OOST</div>
+      <div class="plogo"><img src="taboost-mark.png" class="mark wmark" alt="TABOOST"/>TABOOST</div>
       <h4>The product creators are pushing right now</h4>
       <div class="cards">
         <div class="c pop"><div class="v">2.07M</div><div class="l">units sold</div></div>
@@ -245,25 +247,56 @@
 </div></section>
 
 <footer><div class="wrap">
-  <div class="logo" style="font-size:18px">TAB<span class="dot"></span>OOST</div>
+  <div class="logo" style="font-size:18px"><img src="taboost-mark.png" class="mark" alt="TABOOST"/>TABOOST</div>
   <div>© 2026 TABOOST · Post everywhere from your own logins.</div>
 </div></footer>
 
-<script>
-  // Early-access capture. No backend yet — stores the email locally and confirms.
-  // Wire this to a real list / Stripe when the paywall goes live.
-  var form = document.getElementById('signup');
-  form.addEventListener('submit', function(e){
+<script type="module">
+  // Early-access capture -> Firestore (project post-automation-12546).
+  // firebaseConfig is public client config, safe to ship in the page.
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBSmfIkZZCML2eKE84KBXA_X5VAAC8cgOw",
+    authDomain: "post-automation-12546.firebaseapp.com",
+    projectId: "post-automation-12546",
+    storageBucket: "post-automation-12546.firebasestorage.app",
+    messagingSenderId: "852407324317",
+    appId: "1:852407324317:web:7556339beea3794fdbce74",
+    measurementId: "G-F256RK607C"
+  };
+  const db = getFirestore(initializeApp(firebaseConfig));
+
+  const form = document.getElementById('signup');
+  const msg = document.getElementById('msg');
+  const btn = form.querySelector('button');
+
+  form.addEventListener('submit', async function(e){
     e.preventDefault();
-    var email = document.getElementById('email').value.trim();
+    const email = document.getElementById('email').value.trim();
     if(!email) return;
+    btn.disabled = true; msg.style.color = ""; msg.textContent = "Saving…";
     try{
-      var list = JSON.parse(localStorage.getItem('taboost_waitlist')||'[]');
-      list.push({email:email, at:new Date().toISOString()});
-      localStorage.setItem('taboost_waitlist', JSON.stringify(list));
-    }catch(_){}
-    document.getElementById('msg').textContent = "You're on the list — we'll email your invite soon. 🎉";
-    form.reset();
+      await addDoc(collection(db, 'signups'), {
+        email,
+        createdAt: serverTimestamp(),
+        source: 'landing',
+        ua: navigator.userAgent
+      });
+      msg.textContent = "You're on the list — we'll email your invite soon. 🎉";
+      form.reset();
+    }catch(err){
+      // Keep the lead even if the write is blocked (e.g. rules not published yet).
+      try{
+        const list = JSON.parse(localStorage.getItem('taboost_waitlist')||'[]');
+        list.push({email, at:new Date().toISOString(), err: String(err && err.code || err)});
+        localStorage.setItem('taboost_waitlist', JSON.stringify(list));
+      }catch(_){}
+      msg.style.color = "#b00";
+      msg.textContent = "Got it — saved. (If this persists, the signups write rule isn't published yet.)";
+      console.error('[signup]', err);
+    }finally{ btn.disabled = false; }
   });
 </script>
 </body>

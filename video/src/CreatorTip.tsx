@@ -2,6 +2,7 @@ import React from "react";
 import {
   AbsoluteFill,
   Audio,
+  Img,
   Sequence,
   interpolate,
   spring,
@@ -50,31 +51,12 @@ const fadeUp = (frame: number, start: number, dur = 16) => {
   return { opacity: o, transform: `translateY(${y}px)` };
 };
 
+// Real TABOOST mark (black-on-transparent); knocked to white on dark backgrounds.
 const Logo: React.FC<{ size?: number; dark?: boolean }> = ({ size = 48, dark }) => (
-  <div
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 12,
-      fontFamily,
-      fontWeight: 800,
-      fontSize: size,
-      letterSpacing: -1.5,
-      color: dark ? BRAND.ink : BRAND.paper,
-    }}
-  >
-    <span>TAB</span>
-    <span
-      style={{
-        width: size * 0.62,
-        height: size * 0.62,
-        borderRadius: "50%",
-        background: dark ? BRAND.teal : BRAND.paper,
-        display: "inline-block",
-      }}
-    />
-    <span>OST</span>
-  </div>
+  <Img
+    src={staticFile("taboost-mark.png")}
+    style={{ height: size * 1.5, width: "auto", filter: dark ? "none" : "brightness(0) invert(1)" }}
+  />
 );
 
 const Dots: React.FC<{ count: number; active: number; dark?: boolean }> = ({ count, active, dark }) => (
