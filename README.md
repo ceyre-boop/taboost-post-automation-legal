@@ -20,6 +20,26 @@ bun run post -- --video clip.mp4 --caption "hello"          # dry run: fills eve
 bun run post -- --video clip.mp4 --caption "hello" --live   # publishes
 ```
 
+## Bulk posting — many videos, every platform, one go
+
+Drop in a pile of your own clips and send them all out across every connected
+platform. A minute of setup; the posting runs itself.
+
+```
+node src/cli.ts post --dir ~/clips --platform tiktok,instagram,youtube        # dry run every clip x platform
+node src/cli.ts post --dir ~/clips --caption "shared caption" --live --space 60   # publish, ~60s apart
+node src/cli.ts post --video a.mp4 --video b.mp4 --live                        # a few specific clips (all logged-in platforms)
+node src/cli.ts batch:list                                                    # see batches + per-item status
+node src/cli.ts batch:resume <id>                                             # finish the items that failed/were left
+```
+
+- No `--platform` = every platform you're logged into. Dry run unless `--live`.
+- **Per-clip caption:** put `myclip.txt` next to `myclip.mp4`; otherwise `--caption` applies to all.
+- Live posts are **spaced** (`--space` seconds, jittered) so the account doesn't look like a spam cannon.
+- Batches are **resumable** — state lives in `~/Library/Application Support/TaboostPoster/batches/`.
+- **Dashboard** (`bun run dashboard`, http://127.0.0.1:4747): select many clips, pick platforms once, hit **Post all**, watch the clip×platform progress grid.
+- Engine: `src/batch.ts` (orchestrates the per-platform adapters; one Chrome attach at a time).
+
 Data lives in `~/Library/Application Support/TaboostPoster/` (Chrome profile + `history.db`). Delete the folder to log out everywhere.
 
 ## Weekly product video (auto-generate + post)

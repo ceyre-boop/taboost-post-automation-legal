@@ -38,16 +38,21 @@
   <h2>Accounts</h2>
   <div class="cards" id="cards"><div class="card">Checking Chrome…</div></div>
 
-  <h2>New post</h2>
+  <h2>New post — drop in as many clips as you want</h2>
   <form class="post" id="form">
-    <input type="file" name="video" accept="video/mp4,video/quicktime,video/*" required>
-    <textarea name="caption" placeholder="Caption. For YouTube the first line becomes the title."></textarea>
+    <input type="file" name="videos" accept="video/mp4,video/quicktime,video/*" multiple required>
+    <div id="files"></div>
+    <textarea name="caption" placeholder="Shared caption for every clip. (YouTube: first line becomes the title.) Add a per-clip caption below to override one."></textarea>
     <div class="row" id="targets"></div>
     <div class="row">
       <label class="chk"><input type="checkbox" name="live"> <b>Publish for real</b> <span class="warn">(unchecked = dry run, fills everything but never clicks Post)</span></label>
+      <label class="chk">Space live posts <input type="number" name="space" value="60" min="10" max="900" style="width:60px"> s apart</label>
     </div>
-    <div class="row"><button type="submit" id="go">Post</button><span id="hint" class="warn"></span></div>
+    <div class="row"><button type="submit" id="go">Post all</button><span id="hint" class="warn"></span></div>
   </form>
+
+  <h2>Progress</h2>
+  <div id="grid"><span class="sub">No batch running.</span></div>
 
   <h2>Activity</h2>
   <pre class="log" id="log">Idle.</pre>
@@ -80,17 +85,49 @@ async function loadHistory() {
   const rows = await (await fetch("/api/history")).json();
   $("#hist").innerHTML = rows.map(r => `<tr><td>${r.posted_at}</td><td>${r.platform}</td><td>${(r.caption || "").slice(0, 60)}</td><td><span class="pill ${r.status.startsWith("error") ? "err" : r.status === "posted" ? "" : "dry"}">${r.status.slice(0, 90)}</span></td></tr>`).join("");
 }
+// List the selected clips, each with an optional per-clip caption (caption0, caption1, …).
+$("input[name=videos]").addEventListener("change", (e) => {
+  const files = [...e.target.files];
+  $("#files").innerHTML = files.length
+    ? files.map((f, i) => `<div class="row"><span style="min-width:170px">🎬 ${f.name}</span><input name="caption${i}" placeholder="caption for this clip (optional)" style="flex:1"></div>`).join("")
+    : "";
+  $("#go").textContent = files.length > 1 ? `Post all ${files.length}` : "Post";
+});
+
+function cell(st) {
+  return st === "done" ? '<span class="pill">✓</span>'
+    : st === "error" ? '<span class="pill err">✖</span>'
+    : st === "posting" ? '<span class="pill dry">…</span>'
+    : '<span class="pill dry">·</span>';
+}
+function renderGrid(items) {
+  const vids = [...new Set(items.map(i => i.video))];
+  const plats = [...new Set(items.map(i => i.platform))];
+  let html = '<table><thead><tr><th>Clip</th>' + plats.map(p => `<th>${p}</th>`).join("") + '</tr></thead><tbody>';
+  for (const v of vids) {
+    html += `<tr><td>${v.split("/").pop()}</td>` + plats.map(p => {
+      const it = items.find(i => i.video === v && i.platform === p);
+      return `<td>${it ? cell(it.status) : ""} ${it && it.note ? '<span class="warn">' + it.note.slice(0, 44) + '</span>' : ""}</td>`;
+    }).join("") + "</tr>";
+  }
+  return html + "</tbody></table>";
+}
+
 $("#form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const fd = new FormData(ev.target);
+  const vids = fd.getAll("videos").filter(f => f && f.size > 0);
+  if (!vids.length) { $("#hint").textContent = "Pick at least one video."; return; }
   if (!fd.getAll("platforms").length) { $("#hint").textContent = "Pick at least one connected platform."; return; }
-  $("#go").disabled = true; $("#hint").textContent = ""; $("#log").textContent = "Uploading video to the tool…";
-  const r = await (await fetch("/api/post", { method: "POST", body: fd })).json();
+  $("#go").disabled = true; $("#hint").textContent = "";
+  $("#log").textContent = `Uploading ${vids.length} clip(s)…`; $("#grid").innerHTML = "";
+  const r = await (await fetch("/api/batch", { method: "POST", body: fd })).json();
   if (r.error) { $("#log").textContent = "Error: " + r.error; $("#go").disabled = false; return; }
   const poll = setInterval(async () => {
-    const j = await (await fetch("/api/jobs/" + r.id)).json();
+    const j = await (await fetch("/api/batches/" + r.id)).json();
     $("#log").textContent = j.log.join("\n");
-    if (j.status === "done") { clearInterval(poll); $("#go").disabled = false; loadHistory(); }
+    if (j.items) $("#grid").innerHTML = renderGrid(j.items);
+    if (j.done) { clearInterval(poll); $("#go").disabled = false; loadHistory(); }
   }, 1500);
 });
 loadStatus(); loadHistory();

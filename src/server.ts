@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { APP_DIR, CDP_PORT } from "./config.ts";
 import { withBrowser, pageFor } from "./browser.ts";
 import { PLATFORMS, getPlatform } from "./platforms/index.ts";
+import { buildBatch, runBatch as runBatchEngine, type Batch } from "./batch.ts";
 import { openHistory, recordPost } from "./history.ts";
 
 const PORT = Number(process.env.POSTER_PORT ?? 4747);
@@ -71,6 +72,22 @@ function runJob(video: string, caption: string, platformIds: string[], live: boo
   return job;
 }
 
+interface BatchRun { batch: Batch; log: string[]; done: boolean; }
+const batches = new Map<string, BatchRun>();
+
+function startBatch(videos: { path: string; caption?: string }[], platformIds: string[], live: boolean, spaceSec: number, sharedCaption: string): BatchRun {
+  const batch = buildBatch({ videos, platforms: platformIds, live, spaceSec, sharedCaption });
+  const entry: BatchRun = { batch, log: [], done: false };
+  batches.set(batch.id, entry);
+  const log = (m: string) => entry.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
+  (async () => {
+    try { await runBatchEngine(batch, log, (b) => { entry.batch = b; }); }
+    catch (e) { log(`ERROR: ${(e as Error).message}`); }
+    entry.done = true;
+  })();
+  return entry;
+}
+
 function json(res: ServerResponse, code: number, body: unknown) {
   res.writeHead(code, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
@@ -111,6 +128,28 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname.startsWith("/api/jobs/")) {
       const job = jobs.get(url.pathname.split("/").pop()!);
       return job ? json(res, 200, job) : json(res, 404, { error: "no such job" });
+    }
+    if (req.method === "POST" && url.pathname === "/api/batch") {
+      const body = await readBody(req);
+      const form = await new Response(new Uint8Array(body), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
+      const files = form.getAll("videos").filter((f): f is File => f instanceof File && f.size > 0);
+      if (!files.length) return json(res, 400, { error: "pick at least one video" });
+      const platformIds = form.getAll("platforms").map(String);
+      if (!platformIds.length) return json(res, 400, { error: "pick at least one platform" });
+      mkdirSync(UPLOADS, { recursive: true });
+      const videos: { path: string; caption?: string }[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const dest = join(UPLOADS, `${Date.now()}-${i}${extname(files[i].name) || ".mp4"}`);
+        writeFileSync(dest, Buffer.from(await files[i].arrayBuffer()));
+        const per = String(form.get(`caption${i}`) ?? "").trim();
+        videos.push({ path: dest, caption: per || undefined });
+      }
+      const entry = startBatch(videos, platformIds, form.get("live") === "on", Number(form.get("space")) || 60, String(form.get("caption") ?? ""));
+      return json(res, 200, { id: entry.batch.id });
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/api/batches/")) {
+      const b = batches.get(url.pathname.split("/").pop()!);
+      return b ? json(res, 200, { items: b.batch.items, log: b.log, done: b.done }) : json(res, 404, { error: "no such batch" });
     }
     if (req.method === "GET" && url.pathname === "/api/history") {
       const db = openHistory();
