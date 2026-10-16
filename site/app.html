@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TABOOST Poster — Sign in</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  :root{--teal:#009999;--teal-dark:#00706F;--ink:#0E1414;--ink-soft:#33403f;--paper:#fff;--pop:#FFC247;--line:#e4eaea;--bg:#f4f8f8;--font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
+  a{color:var(--teal-dark);text-decoration:none}
+  .top{background:#fff;border-bottom:1px solid var(--line);padding:16px 20px;display:flex;align-items:center;justify-content:space-between}
+  .logo{display:inline-flex;align-items:center;gap:8px;font-weight:900;font-size:20px;letter-spacing:-1px}
+  .logo img{height:1.3em;width:auto}
+  .wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:28px 18px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:32px;width:100%;max-width:440px;box-shadow:0 20px 50px rgba(14,20,20,.07)}
+  h1{font-size:26px;letter-spacing:-1px;margin:0 0 4px}
+  .sub{color:var(--ink-soft);margin:0 0 22px;font-size:15px}
+  label{display:block;font-weight:600;font-size:13px;margin:14px 0 6px}
+  input{width:100%;padding:13px 15px;border:1.5px solid var(--line);border-radius:12px;font-size:15px;font-family:var(--font)}
+  input:focus{outline:none;border-color:var(--teal)}
+  .btn{width:100%;margin-top:20px;padding:14px;border:0;border-radius:999px;background:var(--teal);color:#fff;font-weight:700;font-size:16px;cursor:pointer}
+  .btn:hover{background:var(--teal-dark)}
+  .btn:disabled{opacity:.6;cursor:default}
+  .btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line);margin-top:10px}
+  .muted{color:var(--ink-soft);font-size:14px;text-align:center;margin-top:18px}
+  .link{cursor:pointer;color:var(--teal-dark);font-weight:700}
+  #msg{font-size:14px;font-weight:600;margin-top:14px;min-height:18px}
+  .ok{color:var(--teal-dark)} .err{color:#b00}
+  .hide{display:none}
+  .badge{display:inline-block;font-size:12px;font-weight:800;padding:4px 12px;border-radius:999px;background:rgba(0,153,153,.12);color:var(--teal-dark);letter-spacing:.3px}
+  .badge.admin{background:var(--pop);color:#3A2A00}
+  .row{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:10px}
+  .adminbox{margin-top:20px;border-top:1px solid var(--line);padding-top:18px}
+  .adminbox h3{font-size:15px;margin:0 0 10px}
+  .sig{font-size:14px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--ink-soft)}
+</style>
+</head>
+<body>
+<div class="top">
+  <a href="/" class="logo"><img src="taboost-mark.png" alt="TABOOST"/>TABOOST</a>
+  <a href="/" style="font-weight:600;font-size:14px">← Home</a>
+</div>
+<div class="wrap">
+  <div class="card">
+    <!-- AUTH (login / signup) -->
+    <div id="authView">
+      <h1 id="authTitle">Sign in</h1>
+      <p class="sub" id="authSub">Welcome back to TABOOST Poster.</p>
+      <form id="authForm">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required placeholder="you@email.com" />
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required minlength="6" placeholder="••••••••" />
+        <button class="btn" id="authBtn" type="submit">Sign in</button>
+      </form>
+      <div id="msg"></div>
+      <p class="muted"><span id="toggleTxt">New here?</span> <span class="link" id="toggle">Create an account</span></p>
+      <p class="muted"><span class="link" id="forgot">Forgot password?</span></p>
+    </div>
+
+    <!-- VERIFY -->
+    <div id="verifyView" class="hide">
+      <h1>Verify your email</h1>
+      <p class="sub">We sent a verification link to <b id="vEmail"></b>. Click it, then come back and refresh.</p>
+      <button class="btn" id="vRefresh">I've verified — continue</button>
+      <button class="btn ghost" id="vResend">Resend the email</button>
+      <div id="vmsg"></div>
+      <p class="muted"><span class="link" id="vSignout">Sign out</span></p>
+    </div>
+
+    <!-- APP -->
+    <div id="appView" class="hide">
+      <h1>Welcome 👋</h1>
+      <p class="sub" id="appWho"></p>
+      <div class="row"><span>Account</span><span id="appEmail" style="font-weight:700"></span></div>
+      <div class="row"><span>Access</span><span id="appRole"></span></div>
+      <div id="adminBox" class="adminbox hide">
+        <h3>Admin — early-access signups (<span id="sigCount">0</span>)</h3>
+        <div id="sigList"></div>
+      </div>
+      <button class="btn ghost" id="signout" style="margin-top:22px">Sign out</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+           sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged, signOut, reload }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, doc, setDoc, getDocs, collection, query, orderBy, limit, serverTimestamp }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBSmfIkZZCML2eKE84KBXA_X5VAAC8cgOw",
+    authDomain: "post-automation-12546.firebaseapp.com",
+    projectId: "post-automation-12546",
+    storageBucket: "post-automation-12546.firebasestorage.app",
+    messagingSenderId: "852407324317",
+    appId: "1:852407324317:web:7556339beea3794fdbce74"
+  };
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // Full-access admins (by email). Rules enforce admin data access by email too.
+  const ADMINS = ["crashingskydrummer@gmail.com", "colineyre222@gmail.com"];
+  const isAdmin = (email) => ADMINS.includes((email || "").toLowerCase());
+
+  const $ = (id) => document.getElementById(id);
+  const show = (id) => { for (const v of ["authView","verifyView","appView"]) $(v).classList.toggle("hide", v !== id); };
+  const setMsg = (el, txt, ok) => { el.textContent = txt; el.className = ok ? "ok" : "err"; };
+
+  let mode = "login";
+  $("toggle").onclick = () => {
+    mode = mode === "login" ? "signup" : "login";
+    const signup = mode === "signup";
+    $("authTitle").textContent = signup ? "Create your account" : "Sign in";
+    $("authSub").textContent = signup ? "Start posting from your own logins." : "Welcome back to TABOOST Poster.";
+    $("authBtn").textContent = signup ? "Create account" : "Sign in";
+    $("toggleTxt").textContent = signup ? "Already have an account?" : "New here?";
+    $("toggle").textContent = signup ? "Sign in" : "Create an account";
+    $("password").autocomplete = signup ? "new-password" : "current-password";
+    $("msg").textContent = "";
+  };
+
+  const niceErr = (e) => ({
+    "auth/invalid-credential":"Wrong email or password.",
+    "auth/email-already-in-use":"That email already has an account — sign in instead.",
+    "auth/weak-password":"Password must be at least 6 characters.",
+    "auth/invalid-email":"That doesn't look like a valid email.",
+    "auth/too-many-requests":"Too many tries — wait a minute and retry.",
+    "auth/operation-not-allowed":"Email sign-in isn't enabled yet in Firebase (owner: turn it on)."
+  }[e.code] || e.message);
+
+  $("authForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = $("email").value.trim(), pw = $("password").value;
+    $("authBtn").disabled = true; setMsg($("msg"), "Working…", true);
+    try {
+      if (mode === "signup") {
+        const cred = await createUserWithEmailAndPassword(auth, email, pw);
+        await sendEmailVerification(cred.user);
+      } else {
+        await signInWithEmailAndPassword(auth, email, pw);
+      }
+      setMsg($("msg"), "", true);
+    } catch (err) { setMsg($("msg"), niceErr(err), false); }
+    finally { $("authBtn").disabled = false; }
+  });
+
+  $("forgot").onclick = async () => {
+    const email = $("email").value.trim();
+    if (!email) return setMsg($("msg"), "Enter your email first, then tap Forgot password.", false);
+    try { await sendPasswordResetEmail(auth, email); setMsg($("msg"), "Password reset email sent.", true); }
+    catch (err) { setMsg($("msg"), niceErr(err), false); }
+  };
+
+  $("vResend").onclick = async () => {
+    try { await sendEmailVerification(auth.currentUser); setMsg($("vmsg"), "Sent — check your inbox (and spam).", true); }
+    catch (err) { setMsg($("vmsg"), niceErr(err), false); }
+  };
+  $("vRefresh").onclick = async () => { await reload(auth.currentUser); route(auth.currentUser); };
+  $("vSignout").onclick = () => signOut(auth);
+  $("signout").onclick = () => signOut(auth);
+
+  async function loadAdmin() {
+    try {
+      const snap = await getDocs(query(collection(db, "signups"), orderBy("createdAt", "desc"), limit(50)));
+      $("sigCount").textContent = snap.size;
+      $("sigList").innerHTML = snap.empty ? "<div class='sig'>No signups yet.</div>"
+        : snap.docs.map(d => `<div class='sig'>${(d.data().email||"").replace(/</g,"&lt;")}</div>`).join("");
+    } catch (e) { $("sigList").innerHTML = `<div class='sig'>Couldn't load (${e.code||e.message}).</div>`; }
+  }
+
+  async function route(user) {
+    if (!user) return show("authView");
+    if (!user.emailVerified) { $("vEmail").textContent = user.email; return show("verifyView"); }
+    // ensure a profile doc; role is display-only (rules enforce real access)
+    const admin = isAdmin(user.email);
+    try { await setDoc(doc(db, "users", user.uid),
+      { email: user.email, role: admin ? "admin" : "member", lastSeen: serverTimestamp() }, { merge: true }); } catch (_) {}
+    $("appEmail").textContent = user.email;
+    $("appWho").textContent = admin ? "You have full admin access." : "Your TABOOST Poster account.";
+    $("appRole").innerHTML = admin ? "<span class='badge admin'>ADMIN · full access</span>" : "<span class='badge'>Member</span>";
+    $("adminBox").classList.toggle("hide", !admin);
+    if (admin) loadAdmin();
+    show("appView");
+  }
+
+  onAuthStateChanged(auth, route);
+</script>
+</body>
+</html>
