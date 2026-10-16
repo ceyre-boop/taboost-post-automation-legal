@@ -132,7 +132,8 @@
     "auth/weak-password":"Password must be at least 6 characters.",
     "auth/invalid-email":"That doesn't look like a valid email.",
     "auth/too-many-requests":"Too many tries — wait a minute and retry.",
-    "auth/operation-not-allowed":"Email sign-in isn't enabled yet in Firebase (owner: turn it on)."
+    "auth/operation-not-allowed":"Email sign-in isn't enabled yet in Firebase (owner: turn it on).",
+    "auth/configuration-not-found":"Email sign-in isn't enabled yet in Firebase (owner: turn it on)."
   }[e.code] || e.message);
 
   $("authForm").addEventListener("submit", async (e) => {
