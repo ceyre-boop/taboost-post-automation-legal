@@ -284,7 +284,19 @@
         source: 'landing',
         ua: navigator.userAgent
       });
-      msg.textContent = "You're on the list — we'll email your invite soon. 🎉";
+      // Fire the confirmation email (serverless + Resend). Don't block success on it.
+      let emailed = false;
+      try {
+        const r = await fetch('/api/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        emailed = r.ok;
+      } catch (_) {}
+      msg.textContent = emailed
+        ? "You're on the list — check your inbox 🎉"
+        : "You're on the list — we'll be in touch 🎉";
       form.reset();
     }catch(err){
       // Keep the lead even if the write is blocked (e.g. rules not published yet).
