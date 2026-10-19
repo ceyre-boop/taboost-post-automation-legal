@@ -7,6 +7,7 @@ export const instagram: Platform = {
   label: "Instagram",
   loginUrl: "https://www.instagram.com/accounts/login/",
   host: /instagram\.com/,
+  verified: true,
 
   async isLoggedIn(page: Page): Promise<boolean> {
     const cookies = await page.context().cookies("https://www.instagram.com");

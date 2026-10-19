@@ -1,93 +1,87 @@
-# Plan — Bulk multi-platform posting ("multitudes of videos in a minute")
+# Plan — More platforms for the cross-platform poster
 
 ## Context
-"What they're paying for" boils down to one killer job: **a minute of the user's
-effort posts many videos across every platform.** Today the engine posts **one
-video to the selected platforms at a time** (`src/cli.ts post --video … --platform …`,
-and the local dashboard upload form). The value the user described —
-*drop in multitudes of videos → one click → they all go out everywhere; and a
-specific video you upload gets sent out* — is **batch** posting, which doesn't exist yet.
+The paid product is: a creator uploads one video, picks their socials, and it posts to
+all of them. The bulk-posting engine for that is **already built and shipped**
+(`src/batch.ts`, parallel per-clip, dashboard + CLI). Its value now scales with the
+number of platforms, and the user's direction is explicit: *"as many options as we can
+provide the better."* Today only **TikTok** and **Instagram** are verified; **YouTube**
+is drafted but unverified. This plan adds more platform adapters.
 
-This plan builds that batch capability on the **existing local engine** (TikTok +
-Instagram already verified, drives the user's own Chrome, no credentials stored), so
-it's usable immediately via `bun run dashboard` / the CLI. Billing, the desktop-app
-wrapper (the user's "desktop app first" / one-time-license answers), and
-auto-generated videos are **explicitly out of scope here** and sequenced after — this
-plan is only the posting feature.
+The architecture makes this cheap per platform: every platform is a `Platform`
+(`src/platforms/types.ts`) registered in the `PLATFORMS` map
+(`src/platforms/index.ts:6`). The batch engine, `loggedInPlatforms()`, the CLI
+`--platform` list, and the dashboard checkboxes all enumerate that map — **so a new
+adapter + one registry line makes it appear everywhere automatically. No engine, CLI,
+or dashboard changes are needed.** The only real work is each platform's web upload
+flow, which must be reverse-engineered against a real login (exactly how Instagram was
+verified: write best-effort selectors → dry-run → fix → verify).
 
-**Each paying user posts THEIR OWN uploaded videos** — the user supplies the clips and
-they get sent out across their platforms ("the same video they specifically upload gets
-sent out"). The auto-generated TABOOST-brand product/tip videos are a separate thing that
-belongs only to TABOOST's own account; they are **not** part of this product and this
-plan does not touch that pipeline.
+(Separate track, NOT in this plan: the user's personal auto-generated TABOOST/creator-tip
+videos posted to TikTok only. That's `src/weekly/` + the batch poster, for Colin's own
+account — unrelated to this product work.)
 
 ## Scope
-- **In:** post N user-provided videos × M connected platforms from one ~1-minute setup;
-  live progress; resumable; human-spaced to avoid spam flags; dry-run by default.
-- **In:** verify/fix the **YouTube** adapter so "every platform" is real (it's the one
-  unverified platform — ISA ISC-11).
-- **Out (later, noted):** Stripe/one-time-license billing, Tauri/Electron desktop
-  packaging + license unlock, per-creator personalized videos, cloud scheduling.
+- **In:** new platform adapters, in priority order: **YouTube** (verify the existing
+  draft) → **Facebook** → **X/Twitter** → **LinkedIn** → **Pinterest** → **Threads**.
+  Each: write/fix adapter → register → one-time human login → dry-run to the publish
+  screen → harden selectors → mark ISA ISC. Order is adjustable.
+- **In:** a small "unverified" marker in the dashboard so users don't trust a
+  not-yet-verified platform on a live post.
+- **Out:** Snapchat (no real web video-upload surface); anything needing an official API
+  or stored credentials (violates the no-API/no-credential design); the personal
+  TikTok video-generation track.
 
-## Design
+## The adapter pattern (reuse — template off `src/platforms/tiktok.ts` + `instagram.ts`)
+Each `src/platforms/<name>.ts` implements `Platform`:
+- `id`, `label`, `loginUrl`, `host` (regex).
+- `isLoggedIn(page)` — read a session cookie for the site via
+  `page.context().cookies(url)` (e.g. TikTok `sessionid`; Facebook `c_user`/`xs`;
+  LinkedIn `li_at`; X `auth_token`; Pinterest `_pinterest_sess`; Google `SID`/`__Secure-3PSID`).
+- `post(page, {video, caption, dryRun}, log)` — `page.goto(uploadUrl)`; if redirected to
+  login, throw the "log in in the window" error; `input[type=file]` `setInputFiles(video)`;
+  dismiss one-off modals; fill the text field(s); **if `dryRun` return before the publish
+  click**; else click publish and confirm success by a **positive signal** (redirect or a
+  success dialog), never by timeout (the TikTok lesson, `tiktok.ts:86-103`).
+- Reuse: `src/platforms/instagram.ts`'s `click({ force: true })` trick for sites that
+  nest the real button inside another `role=button`.
 
-### 1. Batch engine — `src/batch.ts` (new)
-A pure orchestration layer over the existing per-post flow. Reuse, don't rewrite:
-- `src/platforms/index.ts` adapters (`platform.post`), `src/browser.ts` `withBrowser`
-  (it already **serializes** CDP attaches — posts must run one at a time anyway),
-  `src/history.ts` `recordPost`.
-- Input: `{ videos: {path, caption?}[], platforms: string[], live: boolean, spaceSec: number }`.
-- Expands to a matrix of items `{video, platform, status, note}` and posts each
-  **sequentially**, sleeping a randomized `spaceSec` (default ~45–90s) between live posts
-  so the account doesn't look like a spam cannon; dry-runs run back-to-back.
-- **Resumable batch state** reusing the weekly Job/JSON pattern (`src/weekly/paths.ts`):
-  write the batch + per-item status to `~/Library/Application Support/TaboostPoster/batches/<id>.json`;
-  on failure, `--resume <id>` re-runs only `pending`/`error` items.
-- Caption strategy (keep setup to ~1 min): a shared caption applied to all, OR a
-  per-file `<video>.txt` sidecar, OR filename-as-caption, OR none. Shared is the default.
-- Dry-run by default; `live` only when explicitly set (mirrors the current safety rule).
+### Per-platform caption mapping (`PostInput.caption` is one string)
+- TikTok / Instagram / Threads / X / LinkedIn / Facebook: use the whole caption as the
+  post text. (X has a ~280-char limit — truncate with a note in the log.)
+- YouTube: first line = title, rest = description (already done in `youtube.ts`).
+- Pinterest: first line = pin title, rest = description; **must also pick a board** —
+  select the first/most-recent board by default (document this).
 
-### 2. CLI batch mode — `src/cli.ts` (extend)
-Add without breaking single `post --video`:
-- `post --dir <folder> [--caption "…"] [--platform tiktok,instagram,youtube] [--live] [--space 60]`
-  — posts every `*.mp4/*.mov` in the folder to the listed platforms (default: all
-  connected), spaced. Also accept repeated `--video a.mp4 --video b.mp4`.
-- `batch:resume <id>`, `batch:list` thin wrappers over `src/batch.ts`.
-- `--platform` now parses a comma list (today it's one id); default = all logged-in platforms.
-
-### 3. Local dashboard — `dashboard/index.html` + `src/server.ts` (extend)
-This is the "one minute of work" surface:
-- Multi-file upload (`<input type=file multiple>`); show the chosen clips as a list.
-- One shared caption box + optional per-clip caption override.
-- Keep the existing platform checkboxes + the live/dry-run toggle.
-- One **"Post all"** button → `POST /api/batch` (multipart, N files) → `runBatch` in
-  `server.ts` (replaces/augments the single `runJob`), returns a batch id.
-- **Progress grid** (clips × platforms) polled from `GET /api/batches/:id` showing
-  queued → posting → ✓/✗ per cell, plus the existing job log + history panel.
-
-### 4. YouTube verification — `src/platforms/youtube.ts`
-Same method we used to verify Instagram: human logs in once in the tool's Chrome, then
-a dry-run upload shakes out the YouTube Studio selectors; fix with `force`-clicks /
-updated locators as needed; mark ISA ISC-11 when a dry run reaches the publish step.
+## Per-platform workflow (repeatable; each needs ONE human login)
+1. Write `src/platforms/<name>.ts` (best-effort selectors from the live upload page).
+2. Register it in `src/platforms/index.ts` `PLATFORMS`.
+3. `node src/cli.ts login --platform <name>` — the user signs in once in the tool's
+   Chrome, passing any human/2FA check; the session persists in the profile.
+4. `node src/cli.ts post --video <clip> --platform <name>` (dry run) — drives the flow;
+   screenshot the publish screen.
+5. Fix selectors/waits until the dry run reaches the publish screen cleanly.
+6. Mark the ISA ISC for that platform; a later **user-approved** `--live` single post
+   confirms real publishing.
 
 ## Files
-- **New:** `src/batch.ts`, `Plans/…` (this file).
-- **Edit:** `src/cli.ts` (batch args + comma platforms), `src/server.ts` (`/api/batch`,
-  `/api/batches/:id`, `runBatch`), `dashboard/index.html` (multi-upload + progress grid),
-  `src/platforms/youtube.ts` (verify/fix), `ISA.md` (new ISC for batch + YT result),
-  `README.md` (batch usage).
-- **Reuse (no change):** `src/platforms/{tiktok,instagram,youtube}.ts` `.post`,
-  `src/browser.ts` `withBrowser`, `src/history.ts`, `src/weekly/paths.ts` Job pattern.
+- **New:** `src/platforms/facebook.ts`, `x.ts`, `linkedin.ts`, `pinterest.ts`,
+  `threads.ts` (one per platform, as reached).
+- **Edit:** `src/platforms/index.ts` (register each), `src/platforms/youtube.ts`
+  (fix on first verify), `ISA.md` (ISC per platform), `dashboard/index.html` (tiny
+  "unverified" tag on platforms not yet proven), `README.md` (platform list).
+- **No change:** `src/batch.ts`, `src/cli.ts`, `src/server.ts` core (platform-agnostic).
 
-## Verification (end-to-end)
-1. **CLI dry-run batch:** put 3 short test clips in a folder; `node src/cli.ts post --dir <folder> --platform tiktok,instagram` → each clip fills the upload + stops before publish; confirm `history.db` logged 6 `dry-run` rows and the batch JSON shows all `done`.
-2. **Dashboard:** `bun run dashboard`, select the 3 clips, dry-run, watch the 3×2 progress grid complete green; screenshot via the Interceptor/real-Chrome flow.
-3. **Spacing + resume:** kill mid-batch; `batch:resume <id>` finishes only the remaining items.
-4. **One live post:** a single real clip to TikTok with `--live` to confirm real publish + the inter-post delay fires.
-5. **YouTube:** after the human login, a dry-run upload reaches the YouTube publish screen.
+## Verification (per platform, end-to-end)
+1. `login` → `status` shows `logged in`.
+2. Dry-run `post --video <clip> --platform <name>` reaches the publish screen (screenshot
+   via the real-Chrome flow); no thrown error.
+3. One **user-approved** `--live` post publishes and is confirmed by a positive signal.
+4. Finally, a mixed dry-run batch (`post --dir <folder> --platform tiktok,instagram,<new>…`)
+   shows every cell green in the dashboard grid — proving "upload once → all selected."
 
-## Sequenced after this (not built here)
-Desktop app wrapper (Tauri/Electron around this same engine) + one-time **license**
-unlock → then **billing** (one-time purchase issues the license the landing already
-promises) → then per-creator content. The batch engine built here is what the desktop
-app will ship.
+## Sequencing
+One platform per login session, starting with **YouTube** (nearest — adapter drafted,
+just needs the Google login that timed out earlier). Each subsequent platform is the
+same short loop. Breadth grows one verified platform at a time; unverified drafts are
+labeled so no one trusts them live.

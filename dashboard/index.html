@@ -28,6 +28,7 @@
   table { width:100%; border-collapse:collapse; font-size:13px } td, th { padding:8px 6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top } th { color:var(--muted); font-weight:500 }
   .pill { padding:2px 8px; border-radius:999px; font-size:12px; background:#243; color:var(--ok) } .pill.err { background:#3a1f1f; color:var(--bad) } .pill.dry { background:#2a2f3d; color:var(--muted) }
   .warn { color:#ffb454; font-size:13px }
+  .beta { font-size:11px; background:#3a2f1f; color:#ffb454; padding:1px 7px; border-radius:999px; margin-left:6px; vertical-align:middle }
 </style>
 </head>
 <body>
@@ -68,12 +69,12 @@ async function loadStatus() {
     platforms = await (await fetch("/api/status")).json();
     $("#cards").innerHTML = Object.entries(platforms).map(([id, p]) => `
       <div class="card">
-        <div class="name"><span class="dot ${p.loggedIn ? "ok" : "bad"}"></span>${p.label}</div>
+        <div class="name"><span class="dot ${p.loggedIn ? "ok" : "bad"}"></span>${p.label}${p.verified ? "" : ' <span class="beta">unverified</span>'}</div>
         <div class="st">${p.loggedIn ? "Connected (logged in)" : "Not logged in"}</div>
         <button class="${p.loggedIn ? "ghost" : ""}" onclick="connect('${id}')">${p.loggedIn ? "Open login page" : "Connect"}</button>
       </div>`).join("");
     $("#targets").innerHTML = Object.entries(platforms).map(([id, p]) =>
-      `<label class="chk"><input type="checkbox" name="platforms" value="${id}" ${p.loggedIn ? "checked" : "disabled"}> ${p.label}${p.loggedIn ? "" : " (connect first)"}</label>`).join("");
+      `<label class="chk"><input type="checkbox" name="platforms" value="${id}" ${p.loggedIn ? "checked" : "disabled"}> ${p.label}${p.loggedIn ? (p.verified ? "" : " · unverified") : " (connect first)"}</label>`).join("");
   } catch (e) { $("#cards").innerHTML = `<div class="card">Could not reach Chrome: ${e.message}</div>`; }
 }
 async function connect(id) {

@@ -23,6 +23,7 @@ export const tiktok: Platform = {
   label: "TikTok",
   loginUrl: "https://www.tiktok.com/login",
   host: /tiktok\.com/,
+  verified: true,
 
   async isLoggedIn(page: Page): Promise<boolean> {
     // TikTok sets sessionid / sid_tt on .tiktok.com once a login completes.

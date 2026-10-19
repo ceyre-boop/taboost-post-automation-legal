@@ -23,10 +23,10 @@ const jobs = new Map<string, Job>();
 
 async function status() {
   return withBrowser(async (ctx) => {
-    const out: Record<string, { label: string; loggedIn: boolean }> = {};
+    const out: Record<string, { label: string; loggedIn: boolean; verified: boolean }> = {};
     for (const p of Object.values(PLATFORMS)) {
       const page = ctx.pages()[0] ?? (await ctx.newPage());
-      out[p.id] = { label: p.label, loggedIn: await p.isLoggedIn(page).catch(() => false) };
+      out[p.id] = { label: p.label, loggedIn: await p.isLoggedIn(page).catch(() => false), verified: p.verified ?? false };
     }
     return out;
   });

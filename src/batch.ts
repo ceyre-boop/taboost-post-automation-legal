@@ -165,6 +165,7 @@ export async function runBatch(
         item.status = "posting"; item.note = undefined;
         saveBatch(batch); onUpdate(batch);
         log(`▶ ${batch.live ? "" : "(dry) "}${name} → ${item.platform}`);
+        if (batch.live && !getPlatform(item.platform).verified) log(`   ⚠ ${item.platform} is unverified — keep an eye on this one.`);
         try {
           await postOnPage(ctx, item, batch.live, (m) => log(`   [${item.platform}] ${m}`));
           item.status = "done";

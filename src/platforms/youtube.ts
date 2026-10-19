@@ -7,6 +7,7 @@ export const youtube: Platform = {
   label: "YouTube",
   loginUrl: "https://studio.youtube.com/",
   host: /youtube\.com/,
+  verified: false, // adapter written; verify with a dry run once logged in
 
   async isLoggedIn(page: Page): Promise<boolean> {
     const cookies = await page.context().cookies("https://www.youtube.com");
