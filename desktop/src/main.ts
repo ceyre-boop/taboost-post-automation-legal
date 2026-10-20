@@ -105,7 +105,7 @@ function buildMenu(): void {
     {
       label: "Help",
       submenu: [
-        { label: "Get a key / manage account", click: () => shell.openExternal("https://taboost-post-automation-legal.vercel.app/app") },
+        { label: "Get a key / manage account", click: () => shell.openExternal("https://taboost-poster.vercel.app/app") },
       ],
     },
   ];
