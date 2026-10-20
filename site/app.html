@@ -35,6 +35,12 @@
   .adminbox{margin-top:20px;border-top:1px solid var(--line);padding-top:18px}
   .adminbox h3{font-size:15px;margin:0 0 10px}
   .sig{font-size:14px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--ink-soft)}
+  .dlhead{font-weight:600;font-size:13px;margin:14px 0 10px;color:var(--ink-soft)}
+  .dlgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .dl{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:12px 10px;border:1.5px solid var(--line);border-radius:12px;font-weight:700;font-size:14px;color:var(--ink);background:#fff;line-height:1.25}
+  .dl:hover{border-color:var(--teal);color:var(--teal-dark)}
+  .dl small{font-weight:500;color:var(--ink-soft);font-size:11px;margin-top:2px}
+  @media(max-width:420px){.dlgrid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -83,8 +89,14 @@
           <code id="licKey" style="font-family:ui-monospace,Menlo,monospace;font-weight:800;letter-spacing:1px;font-size:15px">—</code>
           <button class="btn" id="copyKey" style="width:auto;margin:0;padding:9px 16px;font-size:13px">Copy</button>
         </div>
-        <p class="muted" style="text-align:left;margin:12px 0 8px">Download the app for your computer, open it, and paste this key to activate.</p>
-        <a class="btn ghost" id="dlBtn" href="/download" style="margin-top:0">Download the app ↓</a>
+        <p class="dlhead">Download the app, open it, and paste this key to activate:</p>
+        <div class="dlgrid">
+          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/TABOOST-Poster-mac-arm64.zip">macOS<small>Apple Silicon</small></a>
+          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/TABOOST-Poster-mac-x64.zip">macOS<small>Intel</small></a>
+          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/TABOOST-Poster-Windows.exe">Windows<small>.exe installer</small></a>
+          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/TABOOST-Poster-Linux.AppImage">Linux<small>.AppImage</small></a>
+        </div>
+        <p class="muted" style="text-align:left;margin:12px 0 0;font-size:12px">Not sure which? See the <a href="/download">download page</a> for help.</p>
       </div>
 
       <div id="adminBox" class="adminbox hide">
