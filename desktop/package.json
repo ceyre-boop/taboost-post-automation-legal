@@ -1,0 +1,76 @@
+{
+  "name": "taboost-poster-desktop",
+  "productName": "TABOOST Poster",
+  "version": "0.1.0",
+  "description": "Upload one video, post it to every platform you connect — from your own logins. No API keys, no stored passwords.",
+  "author": "TABOOST",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.mjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node build.mjs && electron .",
+    "dist": "node build.mjs && electron-builder",
+    "dist:mac": "node build.mjs && electron-builder --mac",
+    "dist:win": "node build.mjs && electron-builder --win",
+    "dist:linux": "node build.mjs && electron-builder --linux"
+  },
+  "dependencies": {
+    "playwright-core": "^1.52.0"
+  },
+  "devDependencies": {
+    "electron": "^38.1.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.2"
+  },
+  "build": {
+    "appId": "com.taboost.poster",
+    "productName": "TABOOST Poster",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "artifactName": "TABOOST-Poster-${version}-${arch}.${ext}",
+    "asarUnpack": [
+      "**/node_modules/playwright-core/**"
+    ],
+    "extraMetadata": {
+      "main": "dist/main.mjs"
+    },
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
+      "category": "public.app-category.social-networking",
+      "identity": null,
+      "icon": "build/icon.png"
+    },
+    "dmg": {
+      "title": "TABOOST Poster"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Network",
+      "icon": "build/icon.png"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ceyre-boop",
+        "repo": "taboost-post-automation-legal"
+      }
+    ]
+  }
+}

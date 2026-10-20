@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TABOOST Poster — Activate</title>
+<style>
+  :root{--teal:#009999;--teal-dark:#00706F;--ink:#0E1414;--ink-soft:#8aa3a3;--line:#1e2b2b;--pop:#FFC247;--font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font-family:var(--font);color:#eef5f5;background:radial-gradient(1200px 600px at 50% -10%,#0f2626,#0E1414 60%);display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased}
+  .card{width:100%;max-width:420px;padding:36px 32px;text-align:center}
+  .logo{font-weight:900;font-size:26px;letter-spacing:-1.2px;margin:0 0 4px}
+  .logo b{color:var(--teal)}
+  .tag{color:var(--ink-soft);font-size:14px;margin:0 0 28px}
+  h1{font-size:20px;margin:0 0 6px;letter-spacing:-.4px}
+  .sub{color:var(--ink-soft);font-size:14px;margin:0 0 22px;line-height:1.5}
+  input{width:100%;padding:15px 16px;border:1.5px solid var(--line);border-radius:12px;font-size:16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:1px;text-align:center;text-transform:uppercase;background:#0b1515;color:#eef5f5}
+  input:focus{outline:none;border-color:var(--teal)}
+  .btn{width:100%;margin-top:16px;padding:15px;border:0;border-radius:999px;background:var(--teal);color:#fff;font-weight:800;font-size:16px;cursor:pointer}
+  .btn:hover{background:var(--teal-dark)}
+  .btn:disabled{opacity:.55;cursor:default}
+  #msg{min-height:20px;margin-top:16px;font-size:14px;font-weight:600}
+  .ok{color:#54d6c6}.err{color:#ff8e8e}
+  .foot{margin-top:26px;color:var(--ink-soft);font-size:13px;line-height:1.6}
+  a{color:var(--teal);font-weight:700;text-decoration:none;cursor:pointer}
+</style>
+</head>
+<body>
+  <div class="card">
+    <p class="logo">TAB<b>●</b>OST</p>
+    <p class="tag">Poster</p>
+    <h1>Activate your copy</h1>
+    <p class="sub">Paste the license key from your TABOOST dashboard. One key unlocks this app on your machine.</p>
+    <form id="form">
+      <input id="key" placeholder="TBP-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+      <button class="btn" id="go" type="submit">Activate</button>
+    </form>
+    <div id="msg"></div>
+    <p class="foot">
+      No key yet? <a id="getkey">Get one at taboost</a><br/>
+      Your logins stay on this computer. We never see your passwords.
+    </p>
+  </div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const setMsg = (t, ok) => { const m = $("msg"); m.textContent = t; m.className = ok ? "ok" : "err"; };
+
+  $("getkey").addEventListener("click", (e) => {
+    e.preventDefault();
+    // handled by main's window-open handler -> opens in the real browser
+    window.open("https://taboost-post-automation-legal.vercel.app/app", "_blank");
+  });
+
+  $("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const key = $("key").value.trim();
+    if (!key) return setMsg("Enter your license key.", false);
+    $("go").disabled = true; setMsg("Checking your key…", true);
+    try {
+      const res = await window.taboost.activate(key);
+      if (res && res.ok) { setMsg("Activated! Opening your dashboard…", true); }
+      else { setMsg((res && res.error) || "Couldn't activate that key.", false); $("go").disabled = false; }
+    } catch (err) {
+      setMsg("Something went wrong. Try again.", false); $("go").disabled = false;
+    }
+  });
+
+  $("key").focus();
+</script>
+</body>
+</html>

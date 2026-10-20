@@ -9,9 +9,18 @@ import { PLATFORMS, getPlatform } from "./platforms/index.ts";
 import { buildBatch, runBatch as runBatchEngine, type Batch } from "./batch.ts";
 import { openHistory, recordPost } from "./history.ts";
 
-const PORT = Number(process.env.POSTER_PORT ?? 4747);
 const UPLOADS = join(APP_DIR, "uploads");
-const HTML = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "dashboard", "index.html"));
+
+// Dashboard HTML: the packaged app points POSTER_DASHBOARD_HTML at its bundled copy;
+// the CLI resolves it next to the source tree.
+let HTML_CACHE: Buffer | null = null;
+function dashboardHtml(): Buffer {
+  if (HTML_CACHE) return HTML_CACHE;
+  const p = process.env.POSTER_DASHBOARD_HTML
+    || join(dirname(fileURLToPath(import.meta.url)), "..", "dashboard", "index.html");
+  HTML_CACHE = readFileSync(p);
+  return HTML_CACHE;
+}
 
 interface Job {
   id: string;
@@ -101,12 +110,13 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+let PORT = Number(process.env.POSTER_PORT ?? 4747);
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://127.0.0.1:${PORT}`);
   try {
     if (req.method === "GET" && url.pathname === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      return res.end(HTML);
+      return res.end(dashboardHtml());
     }
     if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, await status());
     if (req.method === "POST" && url.pathname === "/api/login") {
@@ -159,7 +169,8 @@ const server = createServer(async (req, res) => {
       return b ? json(res, 200, { items: b.batch.items, log: b.log, done: b.done }) : json(res, 404, { error: "no such batch" });
     }
     if (req.method === "GET" && url.pathname === "/api/history") {
-      const db = openHistory();
+      const db = await openHistory();
+      if (!db) return json(res, 200, []);
       const rows = db.prepare("SELECT id, platform, video, caption, status, posted_at FROM posts ORDER BY id DESC LIMIT 50").all();
       db.close();
       return json(res, 200, rows);
@@ -170,8 +181,25 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  const u = `http://127.0.0.1:${PORT}`;
-  console.log(`TABOOST Poster dashboard: ${u}  (Chrome CDP :${CDP_PORT})`);
-  if (!process.argv.includes("--no-open")) spawn("open", [u], { stdio: "ignore" }).unref();
-});
+/** Start the dashboard server. The Electron app calls this with open:false and then
+ *  loads the URL in its own window; the CLI lets it auto-open in the browser. */
+export function startServer(opts: { port?: number; open?: boolean } = {}): Promise<{ url: string; port: number }> {
+  if (opts.port) PORT = opts.port;
+  return new Promise((resolve) => {
+    server.listen(PORT, "127.0.0.1", () => {
+      const u = `http://127.0.0.1:${PORT}`;
+      console.log(`TABOOST Poster dashboard: ${u}  (Chrome CDP :${CDP_PORT})`);
+      if (opts.open !== false && !process.argv.includes("--no-open")) {
+        spawn("open", [u], { stdio: "ignore" }).unref();
+      }
+      resolve({ url: u, port: PORT });
+    });
+  });
+}
+
+// Run directly from the CLI (`node src/server.ts`), but not when imported by the app.
+const invokedDirectly = (() => {
+  try { return process.argv[1] ? fileURLToPath(import.meta.url) === process.argv[1] : false; }
+  catch { return false; }
+})();
+if (invokedDirectly) startServer();

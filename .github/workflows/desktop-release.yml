@@ -1,0 +1,40 @@
+name: Build desktop installers
+
+# Push a version tag (e.g. v0.1.0) to build macOS, Windows and Linux installers
+# and publish them to a GitHub Release. Also runnable on demand from the Actions tab.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to create the Release and upload installers
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm install
+
+      - name: Bundle app
+        working-directory: desktop
+        run: npm run build
+
+      - name: Build & publish installer
+        working-directory: desktop
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

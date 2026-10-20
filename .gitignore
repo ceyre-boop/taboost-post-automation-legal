@@ -4,3 +4,6 @@ video/node_modules
 video/public/product-*
 video/out
 *.mp4
+desktop/node_modules
+desktop/dist
+desktop/release

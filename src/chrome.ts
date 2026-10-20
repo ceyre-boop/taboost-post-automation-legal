@@ -1,18 +1,55 @@
 import { existsSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
+import { platform, homedir } from "node:os";
+import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { CDP_PORT, PROFILE_DIR, ensureDirs } from "./config.ts";
 import { sleep } from "./sleep.ts";
 
-const CHROME_PATHS = [
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-];
+function chromeCandidates(): string[] {
+  const env = process.env.POSTER_CHROME_PATH; // explicit override always wins
+  const home = homedir();
+  switch (platform()) {
+    case "win32": {
+      const pf = process.env["PROGRAMFILES"] || "C:\\Program Files";
+      const pf86 = process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
+      const local = process.env["LOCALAPPDATA"] || join(home, "AppData", "Local");
+      return [
+        env,
+        join(pf, "Google\\Chrome\\Application\\chrome.exe"),
+        join(pf86, "Google\\Chrome\\Application\\chrome.exe"),
+        join(local, "Google\\Chrome\\Application\\chrome.exe"),
+        join(pf, "BraveSoftware\\Brave-Browser\\Application\\brave.exe"),
+        join(pf86, "Microsoft\\Edge\\Application\\msedge.exe"),
+      ].filter(Boolean) as string[];
+    }
+    case "darwin":
+      return [
+        env,
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      ].filter(Boolean) as string[];
+    default: // linux
+      return [
+        env,
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/opt/google/chrome/chrome",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/brave-browser",
+        "/usr/bin/microsoft-edge",
+      ].filter(Boolean) as string[];
+  }
+}
 
 export function findChrome(): string {
-  const found = CHROME_PATHS.find((p) => existsSync(p));
-  if (!found) throw new Error("Google Chrome not found in /Applications. Install it from google.com/chrome.");
+  const found = chromeCandidates().find((p) => existsSync(p));
+  if (!found) {
+    throw new Error("Google Chrome not found. Install it from google.com/chrome (or set POSTER_CHROME_PATH to its location).");
+  }
   return found;
 }
 
@@ -58,7 +95,15 @@ export async function launchChrome(startUrl: string, port = CDP_PORT): Promise<v
 /** Kill only the Chrome running on OUR profile folder, never the user's normal Chrome. */
 export function killToolChrome(): void {
   try {
-    spawnSync("pkill", ["-f", `--user-data-dir=${PROFILE_DIR}`]);
+    if (platform() === "win32") {
+      // Match our profile dir in the command line via WMIC, then kill by PID.
+      spawnSync("powershell", [
+        "-NoProfile", "-Command",
+        `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${PROFILE_DIR.replace(/\\/g, "\\\\")}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
+      ]);
+    } else {
+      spawnSync("pkill", ["-f", `--user-data-dir=${PROFILE_DIR}`]);
+    }
   } catch {}
 }
 
