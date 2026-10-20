@@ -57,9 +57,6 @@
 
   <h2>Activity</h2>
   <pre class="log" id="log">Idle.</pre>
-
-  <h2>History</h2>
-  <table><thead><tr><th>When</th><th>Platform</th><th>Caption</th><th>Result</th></tr></thead><tbody id="hist"></tbody></table>
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
@@ -81,10 +78,6 @@ async function connect(id) {
   $("#log").textContent = `Opening ${platforms[id].label} login in the tool's Chrome window. Log in there; this page refreshes by itself.`;
   await fetch("/api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ platform: id }) });
   const t = setInterval(async () => { await loadStatus(); if (platforms[id].loggedIn) { clearInterval(t); $("#log").textContent = `${platforms[id].label} connected.`; } }, 4000);
-}
-async function loadHistory() {
-  const rows = await (await fetch("/api/history")).json();
-  $("#hist").innerHTML = rows.map(r => `<tr><td>${r.posted_at}</td><td>${r.platform}</td><td>${(r.caption || "").slice(0, 60)}</td><td><span class="pill ${r.status.startsWith("error") ? "err" : r.status === "posted" ? "" : "dry"}">${r.status.slice(0, 90)}</span></td></tr>`).join("");
 }
 // List the selected clips, each with an optional per-clip caption (caption0, caption1, …).
 $("input[name=videos]").addEventListener("change", (e) => {
@@ -128,10 +121,10 @@ $("#form").addEventListener("submit", async (ev) => {
     const j = await (await fetch("/api/batches/" + r.id)).json();
     $("#log").textContent = j.log.join("\n");
     if (j.items) $("#grid").innerHTML = renderGrid(j.items);
-    if (j.done) { clearInterval(poll); $("#go").disabled = false; loadHistory(); }
+    if (j.done) { clearInterval(poll); $("#go").disabled = false; }
   }, 1500);
 });
-loadStatus(); loadHistory();
+loadStatus();
 </script>
 </body>
 </html>
