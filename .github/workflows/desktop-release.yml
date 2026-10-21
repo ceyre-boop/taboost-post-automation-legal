@@ -25,6 +25,10 @@ jobs:
         with:
           node-version: 22
 
+      - name: Stop Spotlight (prevents flaky DMG 'hdiutil detach')
+        if: runner.os == 'macOS'
+        run: sudo mdutil -a -i off || true
+
       - name: Install dependencies
         working-directory: desktop
         run: npm install

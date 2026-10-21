@@ -1,7 +1,7 @@
 {
   "name": "taboost-poster-desktop",
   "productName": "TABOOST Poster",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Upload one video, post it to every platform you connect — from your own logins. No API keys, no stored passwords.",
   "author": "TABOOST",
   "license": "UNLICENSED",
@@ -43,11 +43,18 @@
     },
     "afterPack": "./afterPack.cjs",
     "mac": {
-      "target": [{ "target": "zip", "arch": ["arm64", "x64"] }],
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
       "category": "public.app-category.social-networking",
       "identity": null,
       "icon": "build/icon.png",
       "artifactName": "TABOOST-Poster-mac-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "TABOOST Poster",
+      "contents": [
+        { "x": 140, "y": 180 },
+        { "x": 400, "y": 180, "type": "link", "path": "/Applications" }
+      ]
     },
     "win": {
       "target": ["nsis"],
