@@ -15,8 +15,18 @@ jobs:
   build:
     strategy:
       fail-fast: false
+      # Each macOS arch gets its OWN runner. Building arm64 and x64 DMGs on one
+      # runner makes the second 'hdiutil detach' fail on the shared volume name.
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          - os: macos-latest
+            args: --mac dmg --arm64
+          - os: macos-latest
+            args: --mac dmg --x64
+          - os: windows-latest
+            args: --win
+          - os: ubuntu-latest
+            args: --linux
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +49,6 @@ jobs:
 
       - name: Build & publish installer
         working-directory: desktop
-        run: npx electron-builder --publish always
+        run: npx electron-builder ${{ matrix.args }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
