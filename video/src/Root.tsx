@@ -8,6 +8,12 @@ import {
   creatorTipDuration,
   type CreatorTipProps,
 } from "./CreatorTip";
+import {
+  LiveLesson,
+  defaultLiveLessonProps,
+  liveLessonDuration,
+  type LiveLessonProps,
+} from "./LiveLesson";
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -31,6 +37,18 @@ export const RemotionRoot: React.FC = () => (
       // length follows the number of lessons in the props
       calculateMetadata={({ props }: { props: CreatorTipProps }) => ({
         durationInFrames: creatorTipDuration(props.tips),
+      })}
+    />
+    <Composition
+      id="LiveLesson"
+      component={LiveLesson}
+      durationInFrames={liveLessonDuration(defaultLiveLessonProps.points)}
+      fps={FPS}
+      width={WIDTH}
+      height={HEIGHT}
+      defaultProps={defaultLiveLessonProps}
+      calculateMetadata={({ props }: { props: LiveLessonProps }) => ({
+        durationInFrames: liveLessonDuration(props.points),
       })}
     />
   </>

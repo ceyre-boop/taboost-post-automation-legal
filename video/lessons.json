@@ -1,0 +1,112 @@
+[
+  {
+    "tag": "TIKTOK LIVE · THE MONEY",
+    "hook": "Coins, Diamonds and cash are NOT the same thing.",
+    "points": [
+      { "label": "Coins", "body": "Viewers buy Coins to send you Gifts during a LIVE." },
+      { "label": "Diamonds", "body": "TikTok's separate reward metric, earned from eligible Gifts." },
+      { "label": "The trap", "body": "There's no fixed Diamond-to-dollar rate. Check your own LIVE rewards balance." }
+    ],
+    "takeaway": "Know what you're actually earning.",
+    "handle": "@taboost.colin"
+  },
+  {
+    "tag": "TIKTOK LIVE · ELIGIBILITY",
+    "hook": "1,000 followers does NOT guarantee LIVE.",
+    "points": [
+      { "label": "Region varies", "body": "TikTok says the follower threshold can change by region." },
+      { "label": "Age gate", "body": "You must be 18+ and may be asked to verify your age." },
+      { "label": "If it's missing", "body": "Check standing and account notices, then Settings → Report a problem." }
+    ],
+    "takeaway": "Eligibility isn't a single number.",
+    "handle": "@taboost.colin"
+  },
+  {
+    "tag": "TIKTOK LIVE · UNLOCKS",
+    "hook": "Going LIVE and getting Gifts are two different unlocks.",
+    "points": [
+      { "label": "Separate", "body": "LIVE access does not automatically turn on Gifts." },
+      { "label": "Depends on", "body": "Your region, eligibility, and good standing." },
+      { "label": "Check", "body": "Look for LIVE Gifts in your LIVE settings — it may not be yours to toggle." }
+    ],
+    "takeaway": "Don't assume one unlocks the other.",
+    "handle": "@taboost.colin"
+  },
+  {
+    "tag": "TIKTOK LIVE · BATTLES",
+    "hook": "Winning a LIVE Match is NOT a payout.",
+    "points": [
+      { "label": "Match points", "body": "Gifts and likes build a score that decides the winner." },
+      { "label": "Not cash", "body": "Match points aren't Diamonds, and Diamonds aren't guaranteed cash." },
+      { "label": "How to start", "body": "Co-host → Match → pick a mode → send the invite." }
+    ],
+    "takeaway": "Play for reach, not a scoreboard myth.",
+    "handle": "@taboost.colin"
+  },
+  {
+    "tag": "TIKTOK LIVE · MODERATION",
+    "hook": "Mute and Block are not the same move.",
+    "points": [
+      { "label": "Muted", "body": "They can still watch — they just can't comment." },
+      { "label": "Blocked", "body": "They can't view your LIVE at all until you unblock them." },
+      { "label": "Scale it", "body": "Assign moderators — they only get the permissions you grant." }
+    ],
+    "takeaway": "Control the room without killing it.",
+    "handle": "@taboost.colin"
+  },
+  {
+    "tag": "TIKTOK LIVE · DESKTOP",
+    "hook": "Phone LIVE does NOT unlock PC LIVE.",
+    "points": [
+      { "label": "LIVE Studio", "body": "TikTok's PC tool — desktop access is approved separately." },
+      { "label": "Check status", "body": "Confirm your LIVE access inside LIVE Studio, then apply if offered." },
+      { "label": "No shortcuts", "body": "Don't trust unofficial 'stream key' bypasses." }
+    ],
+    "takeaway": "Desktop is its own permission.",
+    "handle": "@taboost.colin"
+  },
+  {
+    "tag": "TIKTOK LIVE · REPURPOSE",
+    "hook": "Your LIVE replay is free content for 30 days.",
+    "points": [
+      { "label": "Where", "body": "Profile → TikTok Studio → LIVE → LIVE recordings." },
+      { "label": "Do this", "body": "Download it and clip your best moments." },
+      { "label": "Then", "body": "Cross-post those clips everywhere — one upload, every platform." }
+    ],
+    "takeaway": "Stop letting your LIVEs disappear.",
+    "handle": "@taboost.colin"
+  },
+  {
+    "tag": "TIKTOK LIVE · GROWTH",
+    "hook": "Announce your LIVE before you ever go on.",
+    "points": [
+      { "label": "LIVE Events", "body": "Schedule a LIVE so viewers register for a reminder." },
+      { "label": "Where", "body": "+ → LIVE → LIVE Center → LIVE Events → Create an event." },
+      { "label": "Why", "body": "It shows in each viewer's local time — a warm crowd on arrival." }
+    ],
+    "takeaway": "Build the audience before you start.",
+    "handle": "@taboost.colin"
+  },
+  {
+    "tag": "TIKTOK LIVE · REACH",
+    "hook": "A LIVE can be allowed and still get buried.",
+    "points": [
+      { "label": "Two layers", "body": "Not removed is not the same as eligible for recommendation." },
+      { "label": "What hurts reach", "body": "Mature themes, low-effort streams, aggressive gift-begging." },
+      { "label": "Protect yourself", "body": "Never show your address, IDs, or exact location on camera." }
+    ],
+    "takeaway": "Allowed isn't the same as promoted.",
+    "handle": "@taboost.colin"
+  },
+  {
+    "tag": "TIKTOK LIVE · RESTRICTIONS",
+    "hook": "Got a LIVE warning? Do NOT make a second account.",
+    "points": [
+      { "label": "Read it", "body": "Open the exact notice and the guideline it cites." },
+      { "label": "Appeal", "body": "Inbox → System notifications → Account updates → Appeal." },
+      { "label": "Never", "body": "Evading with a new account or fake age makes it worse." }
+    ],
+    "takeaway": "Appeal the right way — once.",
+    "handle": "@taboost.colin"
+  }
+]
