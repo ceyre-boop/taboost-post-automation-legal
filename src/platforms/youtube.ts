@@ -45,9 +45,12 @@ export const youtube: Platform = {
       await page.locator("#next-button").first().click({ timeout: 30_000 });
       await page.waitForTimeout(800);
     }
-    const publicRadio = page.locator('tp-yt-paper-radio-button[name="PUBLIC"]').first();
-    await publicRadio.waitFor({ state: "visible", timeout: 30_000 });
-    await publicRadio.click();
+    // Visibility: POSTER_YT_VISIBILITY = public | unlisted | private (default public).
+    const vis = (process.env.POSTER_YT_VISIBILITY || "public").toUpperCase();
+    const visName = ["PUBLIC", "UNLISTED", "PRIVATE"].includes(vis) ? vis : "PUBLIC";
+    const visRadio = page.locator(`tp-yt-paper-radio-button[name="${visName}"]`).first();
+    await visRadio.waitFor({ state: "visible", timeout: 30_000 });
+    await visRadio.click();
 
     const done = page.locator("#done-button").first();
     await page.waitForFunction(() => {
@@ -55,7 +58,7 @@ export const youtube: Platform = {
       return !!b && b.getAttribute("disabled") === null && b.getAttribute("aria-disabled") !== "true";
     }, undefined, { timeout: 600_000 });
     if (input.dryRun) {
-      log("DRY RUN: visibility set to Public, upload processed. Not clicking Publish.");
+      log(`DRY RUN: visibility set to ${visName}, upload processed. Not clicking Publish.`);
       return;
     }
     await done.click();
