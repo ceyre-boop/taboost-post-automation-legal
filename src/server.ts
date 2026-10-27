@@ -22,6 +22,26 @@ function dashboardHtml(): Buffer {
   return HTML_CACHE;
 }
 
+// Phone-first upload page (served at /m). Honors POSTER_MOBILE_HTML for the packaged app.
+let MOBILE_CACHE: Buffer | null = null;
+function mobileHtml(): Buffer {
+  if (MOBILE_CACHE) return MOBILE_CACHE;
+  const p = process.env.POSTER_MOBILE_HTML
+    || join(dirname(fileURLToPath(import.meta.url)), "..", "mobile", "index.html");
+  MOBILE_CACHE = readFileSync(p);
+  return MOBILE_CACHE;
+}
+
+// When ACCESS_TOKEN is set (remote mode, reachable off-box), every /m and /api request
+// must carry it — otherwise anyone with the public URL could post to the signed-in
+// accounts. The dashboard on localhost runs with no token, so nothing changes there.
+let ACCESS_TOKEN = process.env.POSTER_ACCESS_TOKEN || "";
+function authorized(req: IncomingMessage, url: URL): boolean {
+  if (!ACCESS_TOKEN) return true;
+  const given = url.searchParams.get("k") || (req.headers["x-taboost-key"] as string) || "";
+  return given === ACCESS_TOKEN;
+}
+
 interface Job {
   id: string;
   status: "running" | "done";
@@ -114,9 +134,14 @@ let PORT = Number(process.env.POSTER_PORT ?? 4747);
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://127.0.0.1:${PORT}`);
   try {
+    if (!authorized(req, url)) return json(res, 401, { error: "Unauthorized — this link needs its access key." });
     if (req.method === "GET" && url.pathname === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       return res.end(dashboardHtml());
+    }
+    if (req.method === "GET" && (url.pathname === "/m" || url.pathname === "/m/")) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      return res.end(mobileHtml());
     }
     if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, await status());
     if (req.method === "POST" && url.pathname === "/api/login") {
@@ -183,11 +208,15 @@ const server = createServer(async (req, res) => {
 
 /** Start the dashboard server. The Electron app calls this with open:false and then
  *  loads the URL in its own window; the CLI lets it auto-open in the browser. */
-export function startServer(opts: { port?: number; open?: boolean } = {}): Promise<{ url: string; port: number }> {
+export function startServer(
+  opts: { port?: number; open?: boolean; host?: string; token?: string } = {},
+): Promise<{ url: string; port: number }> {
   if (opts.port) PORT = opts.port;
+  if (opts.token !== undefined) ACCESS_TOKEN = opts.token;
+  const host = opts.host || "127.0.0.1";
   return new Promise((resolve) => {
-    server.listen(PORT, "127.0.0.1", () => {
-      const u = `http://127.0.0.1:${PORT}`;
+    server.listen(PORT, host, () => {
+      const u = `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${PORT}`;
       console.log(`TABOOST Poster dashboard: ${u}  (Chrome CDP :${CDP_PORT})`);
       if (opts.open !== false && !process.argv.includes("--no-open")) {
         spawn("open", [u], { stdio: "ignore" }).unref();

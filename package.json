@@ -13,7 +13,8 @@
     "weekly:approve": "node src/weekly/approve.ts",
     "test": "node --test src/weekly/weekly.test.ts",
     "typecheck": "bunx tsc --noEmit",
-    "dashboard": "node src/server.ts"
+    "dashboard": "node src/server.ts",
+    "remote": "node src/remote.ts"
   },
   "dependencies": {
     "playwright-core": "^1.52.0"

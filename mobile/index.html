@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#FF0059" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="TABOOST" />
+<title>TABOOST · Post</title>
+<style>
+  :root{
+    --pink:#FF0059; --pink-deep:#B80040; --ink:#0E1414; --paper:#fff;
+    --pop:#FFC247; --pop-ink:#3A2A00; --muted:rgba(255,255,255,.66);
+    --card:#171d1d; --line:rgba(255,255,255,.12); --ok:#2bd67b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:linear-gradient(170deg,#1a0712,var(--ink) 42%);
+    color:var(--paper); min-height:100vh;
+    padding:max(18px,env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom));
+    -webkit-text-size-adjust:100%;
+  }
+  header{display:flex;align-items:center;gap:12px;margin:6px 0 20px}
+  .mark{width:44px;height:44px;border-radius:12px;background:var(--pink);
+    display:grid;place-items:center;font-weight:900;color:#000;font-size:22px;box-shadow:0 8px 24px rgba(255,0,89,.4)}
+  header h1{font-size:20px;margin:0;font-weight:800;letter-spacing:-.4px}
+  header small{display:block;color:var(--muted);font-weight:600;font-size:12.5px;margin-top:1px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}
+  label.lbl{display:block;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+  /* file picker */
+  .drop{border:2px dashed rgba(255,255,255,.2);border-radius:16px;padding:26px 16px;text-align:center;color:var(--muted);font-weight:600}
+  .drop.have{border-color:var(--pink);color:var(--paper);background:rgba(255,0,89,.08)}
+  .drop b{display:block;color:var(--paper);font-size:16px;margin-top:4px;word-break:break-all}
+  input[type=file]{display:none}
+  textarea{width:100%;min-height:92px;resize:vertical;background:#0c1111;color:var(--paper);
+    border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;font-size:16px}
+  /* platform chips */
+  .chips{display:flex;flex-wrap:wrap;gap:10px}
+  .chip{display:flex;align-items:center;gap:8px;padding:12px 14px;border-radius:999px;
+    border:1px solid var(--line);background:#0c1111;font-weight:700;font-size:15px;cursor:pointer;user-select:none}
+  .chip .dot{width:9px;height:9px;border-radius:50%;background:#555;flex:none}
+  .chip.on .dot{background:#2bd67b}
+  .chip.sel{border-color:var(--pink);background:rgba(255,0,89,.14);box-shadow:inset 0 0 0 1px var(--pink)}
+  .chip.off{opacity:.4;cursor:not-allowed}
+  .chip .tag{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.4}
+  /* post button */
+  .post{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom));width:100%;border:0;border-radius:16px;
+    padding:18px;font-size:18px;font-weight:900;letter-spacing:.3px;color:#000;background:var(--pink);
+    box-shadow:0 12px 30px rgba(255,0,89,.4);cursor:pointer;margin-top:4px}
+  .post:disabled{opacity:.45;box-shadow:none;cursor:default}
+  .post.busy{background:var(--pop);color:var(--pop-ink)}
+  /* progress */
+  #prog{margin-top:14px}
+  .row{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line);font-weight:700}
+  .row:first-child{border-top:0}
+  .row .ic{width:22px;text-align:center}
+  .row small{display:block;color:var(--muted);font-weight:600;font-size:12px}
+  .spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.25);
+    border-top-color:var(--pink);border-radius:50%;animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .banner{border-radius:12px;padding:12px 14px;font-weight:700;font-size:14px;margin-bottom:14px;display:none}
+  .banner.err{display:block;background:rgba(255,80,80,.14);border:1px solid rgba(255,80,80,.4);color:#ffb3b3}
+  .banner.ok{display:block;background:rgba(43,214,123,.12);border:1px solid rgba(43,214,123,.4);color:#8ff0bd}
+</style>
+</head>
+<body>
+  <header>
+    <div class="mark">T</div>
+    <div><h1>TABOOST Poster</h1><small>one upload → every platform</small></div>
+  </header>
+
+  <div id="banner" class="banner"></div>
+
+  <div class="card">
+    <label class="lbl">1 · Your video</label>
+    <label class="drop" id="drop" for="file">
+      Tap to choose a video
+      <b id="fname" style="display:none"></b>
+    </label>
+    <input type="file" id="file" accept="video/*" />
+  </div>
+
+  <div class="card">
+    <label class="lbl">2 · Caption</label>
+    <textarea id="caption" placeholder="Write your caption + #hashtags…"></textarea>
+  </div>
+
+  <div class="card">
+    <label class="lbl">3 · Post to</label>
+    <div class="chips" id="chips"><div class="hint">Checking what's connected…</div></div>
+    <div class="hint" id="chiphint"></div>
+  </div>
+
+  <button class="post" id="post" disabled>Post now</button>
+  <div id="prog"></div>
+
+<script>
+const KEY = new URLSearchParams(location.search).get("k") || "";
+const hdr = KEY ? { "x-taboost-key": KEY } : {};
+const api = (p, opts={}) => fetch(p, { ...opts, headers: { ...(opts.headers||{}), ...hdr } });
+const $ = (id) => document.getElementById(id);
+let platforms = [];          // {id,label,loggedIn,verified}
+const selected = new Set();
+
+function banner(msg, kind){ const b=$("banner"); b.className="banner "+kind; b.textContent=msg; if(!msg) b.style.display="none"; }
+
+function renderChips(){
+  const box = $("chips"); box.innerHTML = "";
+  const anyLoggedIn = platforms.some(p=>p.loggedIn);
+  if(!platforms.length){ box.innerHTML='<div class="hint">No platforms found.</div>'; return; }
+  for(const p of platforms){
+    const el = document.createElement("div");
+    const on = p.loggedIn;
+    el.className = "chip " + (on?"on":"off") + (selected.has(p.id)?" sel":"");
+    el.innerHTML = `<span class="dot"></span><span>${p.label}</span>` +
+      (on ? (p.verified?"":`<span class="tag">beta</span>`) : `<span class="tag">not connected</span>`);
+    if(on){ el.onclick = () => { selected.has(p.id)?selected.delete(p.id):selected.add(p.id); renderChips(); syncPost(); }; }
+    box.appendChild(el);
+  }
+  $("chiphint").textContent = anyLoggedIn
+    ? "Only connected accounts can be picked. Green dot = ready."
+    : "Nothing connected yet — connect your accounts once on the computer running this, then refresh.";
+}
+
+async function loadStatus(){
+  try{
+    const r = await api("/api/status");
+    if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error || ("status "+r.status));
+    const data = await r.json();
+    platforms = Object.entries(data).map(([id,v]) => ({ id, label:v.label, loggedIn:v.loggedIn, verified:v.verified }));
+    for(const p of platforms) if(p.loggedIn) selected.add(p.id);   // default: all ready ones
+    renderChips(); syncPost();
+  }catch(e){ banner("Couldn't reach the poster: "+e.message, "err"); }
+}
+
+$("file").onchange = () => {
+  const f = $("file").files[0];
+  const d = $("drop"), n = $("fname");
+  if(f){ d.classList.add("have"); n.style.display="block"; n.textContent=f.name; d.childNodes[0].textContent="Video ready"; }
+  else { d.classList.remove("have"); n.style.display="none"; d.childNodes[0].textContent="Tap to choose a video"; }
+  syncPost();
+};
+
+function syncPost(){
+  const ready = $("file").files[0] && selected.size>0;
+  const b = $("post"); b.disabled = !ready;
+  if(ready) b.textContent = `Post to ${selected.size} ${selected.size===1?"platform":"platforms"}`;
+}
+
+$("post").onclick = async () => {
+  const f = $("file").files[0]; if(!f || !selected.size) return;
+  const b = $("post"); b.disabled = true; b.classList.add("busy"); b.textContent = "Uploading…"; banner("", "");
+  const fd = new FormData();
+  fd.append("video", f);
+  fd.append("caption", $("caption").value);
+  fd.append("live", "on");
+  for(const id of selected) fd.append("platforms", id);
+  try{
+    const r = await api("/api/post", { method:"POST", body: fd });
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error || ("error "+r.status));
+    pollJob(j.id);
+  }catch(e){ banner("Upload failed: "+e.message, "err"); b.classList.remove("busy"); syncPost(); }
+};
+
+async function pollJob(id){
+  const names = Object.fromEntries(platforms.map(p=>[p.id,p.label]));
+  const draw = (job) => {
+    const prog = $("prog"); prog.innerHTML = "";
+    for(const pid of selected){
+      const res = job.results[pid];
+      const row = document.createElement("div"); row.className="row";
+      let ic = '<span class="spin"></span>', sub = "posting…";
+      if(res === "posted"){ ic="✅"; sub="posted"; }
+      else if(res === "dry-run"){ ic="✅"; sub="ready (dry run)"; }
+      else if(res && res.startsWith("error")){ ic="❌"; sub=res.replace(/^error:\s*/,""); }
+      row.innerHTML = `<span class="ic">${ic}</span><div><div>${names[pid]||pid}</div><small>${sub}</small></div>`;
+      prog.appendChild(row);
+    }
+  };
+  const b = $("post");
+  const tick = async () => {
+    try{
+      const r = await api("/api/jobs/"+id); const job = await r.json();
+      draw(job);
+      if(job.status === "done"){
+        const errs = Object.values(job.results).filter(v=>String(v).startsWith("error")).length;
+        const ok = Object.values(job.results).filter(v=>v==="posted"||v==="dry-run").length;
+        banner(errs? `Done — ${ok} posted, ${errs} had trouble.` : `🎉 Posted to all ${ok}!`, errs?"err":"ok");
+        b.classList.remove("busy"); b.textContent="Post another"; b.disabled=false;
+        b.onclick = () => location.reload();
+        return;
+      }
+    }catch(e){ /* keep polling */ }
+    setTimeout(tick, 1500);
+  };
+  tick();
+}
+
+loadStatus();
+</script>
+</body>
+</html>
