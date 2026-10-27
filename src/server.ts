@@ -134,6 +134,16 @@ let PORT = Number(process.env.POSTER_PORT ?? 4747);
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://127.0.0.1:${PORT}`);
   try {
+    // The logo is non-sensitive and loaded by an <img> that can't send the key header.
+    if (req.method === "GET" && url.pathname === "/genie.jpg") {
+      const p = process.env.POSTER_MOBILE_HTML
+        ? join(dirname(process.env.POSTER_MOBILE_HTML), "genie.jpg")
+        : join(dirname(fileURLToPath(import.meta.url)), "..", "mobile", "genie.jpg");
+      try {
+        res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "max-age=86400" });
+        return res.end(readFileSync(p));
+      } catch { return json(res, 404, { error: "no logo" }); }
+    }
     if (!authorized(req, url)) return json(res, 401, { error: "Unauthorized — this link needs its access key." });
     if (req.method === "GET" && url.pathname === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });

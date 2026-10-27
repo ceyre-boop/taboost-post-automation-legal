@@ -2,127 +2,183 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#FF0059" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#0E1414" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="TABOOST" />
-<title>TABOOST · Post</title>
+<link rel="apple-touch-icon" href="genie.jpg" />
+<title>TABOOST Poster</title>
 <style>
   :root{
-    --pink:#FF0059; --pink-deep:#B80040; --ink:#0E1414; --paper:#fff;
-    --pop:#FFC247; --pop-ink:#3A2A00; --muted:rgba(255,255,255,.66);
-    --card:#171d1d; --line:rgba(255,255,255,.12); --ok:#2bd67b;
+    --pink:#FF0059; --pink-deep:#B80040; --ink:#0E1414; --ink-2:#121818;
+    --paper:#fff; --pop:#FFC247; --pop-ink:#3A2A00;
+    --muted:rgba(255,255,255,.60); --muted-2:rgba(255,255,255,.42);
+    --card:rgba(255,255,255,.045); --card-brd:rgba(255,255,255,.09);
+    --field:#0b1010; --ok:#2BD67B; --radius:20px;
   }
-  *{box-sizing:border-box}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0}
   body{
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background:linear-gradient(170deg,#1a0712,var(--ink) 42%);
-    color:var(--paper); min-height:100vh;
-    padding:max(18px,env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom));
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    color:var(--paper); min-height:100dvh; line-height:1.45;
+    background:
+      radial-gradient(130% 70% at 85% -10%, rgba(255,0,89,.22), transparent 60%),
+      radial-gradient(120% 60% at -10% 0%, rgba(255,194,71,.08), transparent 55%),
+      var(--ink);
+    background-attachment:fixed;
+    padding:calc(14px + env(safe-area-inset-top)) 16px calc(130px + env(safe-area-inset-bottom));
     -webkit-text-size-adjust:100%;
   }
-  header{display:flex;align-items:center;gap:12px;margin:6px 0 20px}
-  .mark{width:44px;height:44px;border-radius:12px;background:var(--pink);
-    display:grid;place-items:center;font-weight:900;color:#000;font-size:22px;box-shadow:0 8px 24px rgba(255,0,89,.4)}
-  header h1{font-size:20px;margin:0;font-weight:800;letter-spacing:-.4px}
-  header small{display:block;color:var(--muted);font-weight:600;font-size:12.5px;margin-top:1px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}
-  label.lbl{display:block;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
-  /* file picker */
-  .drop{border:2px dashed rgba(255,255,255,.2);border-radius:16px;padding:26px 16px;text-align:center;color:var(--muted);font-weight:600}
-  .drop.have{border-color:var(--pink);color:var(--paper);background:rgba(255,0,89,.08)}
-  .drop b{display:block;color:var(--paper);font-size:16px;margin-top:4px;word-break:break-all}
+  .wrap{max-width:480px;margin:0 auto}
+
+  /* ---- header ---- */
+  header{display:flex;align-items:center;gap:13px;margin:4px 2px 22px}
+  .logo{width:46px;height:46px;border-radius:14px;display:block;object-fit:cover;
+    box-shadow:0 8px 22px rgba(255,0,89,.35),inset 0 0 0 1px rgba(255,255,255,.12)}
+  .brand h1{font-size:18px;margin:0;font-weight:800;letter-spacing:-.3px}
+  .brand p{margin:2px 0 0;color:var(--muted);font-weight:600;font-size:12.5px}
+  .beta{margin-left:auto;font-size:10px;font-weight:800;letter-spacing:1px;color:var(--pop);
+    border:1px solid rgba(255,194,71,.4);border-radius:999px;padding:4px 9px;align-self:flex-start}
+
+  /* ---- cards ---- */
+  .card{background:var(--card);border:1px solid var(--card-brd);border-radius:var(--radius);
+    padding:16px;margin-bottom:13px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .step{display:flex;align-items:center;gap:9px;margin:0 0 13px}
+  .step .n{width:22px;height:22px;border-radius:7px;background:var(--pink);color:#000;
+    font-weight:900;font-size:12px;display:grid;place-items:center;flex:none}
+  .step .t{font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+
+  /* ---- file picker ---- */
+  .drop{border:1.5px dashed rgba(255,255,255,.18);border-radius:15px;padding:24px 16px;
+    text-align:center;color:var(--muted);font-weight:600;transition:.15s;cursor:pointer}
+  .drop svg{display:block;margin:0 auto 9px;opacity:.6}
+  .drop .big{color:var(--paper);font-size:15.5px;font-weight:700}
+  .drop .sub{font-size:12px;margin-top:3px;color:var(--muted-2)}
+  .drop.have{border-style:solid;border-color:var(--pink);background:rgba(255,0,89,.07);color:var(--paper)}
+  .drop.have svg{opacity:1}
+  .drop.have .fn{display:block;font-size:14px;font-weight:700;margin-top:3px;word-break:break-all;color:var(--paper)}
   input[type=file]{display:none}
-  textarea{width:100%;min-height:92px;resize:vertical;background:#0c1111;color:var(--paper);
-    border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;font-size:16px}
-  /* platform chips */
-  .chips{display:flex;flex-wrap:wrap;gap:10px}
-  .chip{display:flex;align-items:center;gap:8px;padding:12px 14px;border-radius:999px;
-    border:1px solid var(--line);background:#0c1111;font-weight:700;font-size:15px;cursor:pointer;user-select:none}
-  .chip .dot{width:9px;height:9px;border-radius:50%;background:#555;flex:none}
-  .chip.on .dot{background:#2bd67b}
-  .chip.sel{border-color:var(--pink);background:rgba(255,0,89,.14);box-shadow:inset 0 0 0 1px var(--pink)}
+
+  /* ---- caption ---- */
+  textarea{width:100%;min-height:96px;resize:none;background:var(--field);color:var(--paper);
+    border:1px solid var(--card-brd);border-radius:13px;padding:13px;font:inherit;font-size:16px;line-height:1.4}
+  textarea::placeholder{color:var(--muted-2)}
+  textarea:focus{outline:none;border-color:rgba(255,0,89,.5);box-shadow:0 0 0 3px rgba(255,0,89,.12)}
+  .cc{text-align:right;font-size:11px;color:var(--muted-2);margin-top:6px;font-weight:600}
+
+  /* ---- platform chips ---- */
+  .chips{display:flex;flex-wrap:wrap;gap:9px}
+  .chip{display:flex;align-items:center;gap:8px;padding:11px 14px;border-radius:13px;
+    border:1px solid var(--card-brd);background:var(--field);font-weight:700;font-size:14.5px;
+    cursor:pointer;transition:.12s;user-select:none}
+  .chip .dot{width:8px;height:8px;border-radius:50%;background:#4a5252;flex:none;transition:.12s}
+  .chip.on .dot{background:var(--ok);box-shadow:0 0 8px rgba(43,214,123,.7)}
+  .chip.sel{border-color:var(--pink);background:rgba(255,0,89,.16);color:#fff;box-shadow:inset 0 0 0 1px var(--pink)}
+  .chip.sel .dot{background:#fff;box-shadow:none}
   .chip.off{opacity:.4;cursor:not-allowed}
-  .chip .tag{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
-  .hint{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.4}
-  /* post button */
-  .post{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom));width:100%;border:0;border-radius:16px;
-    padding:18px;font-size:18px;font-weight:900;letter-spacing:.3px;color:#000;background:var(--pink);
-    box-shadow:0 12px 30px rgba(255,0,89,.4);cursor:pointer;margin-top:4px}
-  .post:disabled{opacity:.45;box-shadow:none;cursor:default}
+  .chip .mini{font-size:9px;font-weight:800;color:var(--muted-2);text-transform:uppercase;letter-spacing:.5px}
+  .hint{font-size:12px;color:var(--muted);margin-top:11px;line-height:1.4}
+  .skeleton{height:42px;border-radius:13px;background:
+    linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.09),rgba(255,255,255,.04));
+    background-size:200% 100%;animation:sh 1.3s infinite;flex:1}
+  @keyframes sh{to{background-position:-200% 0}}
+
+  /* ---- sticky post bar ---- */
+  .bar{position:fixed;left:0;right:0;bottom:0;padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+    background:linear-gradient(to top,var(--ink) 55%,rgba(14,20,20,0));pointer-events:none}
+  .bar .inner{max-width:480px;margin:0 auto;pointer-events:auto}
+  .post{width:100%;border:0;border-radius:15px;padding:17px;font-size:17px;font-weight:800;
+    letter-spacing:.2px;color:#000;background:var(--pink);cursor:pointer;transition:.15s;
+    box-shadow:0 10px 30px rgba(255,0,89,.42)}
+  .post:active{transform:translateY(1px)}
+  .post:disabled{opacity:.4;box-shadow:none;background:#3a2630;color:rgba(255,255,255,.5);cursor:default}
   .post.busy{background:var(--pop);color:var(--pop-ink)}
-  /* progress */
-  #prog{margin-top:14px}
-  .row{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line);font-weight:700}
+
+  /* ---- progress + banner ---- */
+  #prog:not(:empty){margin-top:2px}
+  .row{display:flex;align-items:center;gap:11px;padding:12px 0;border-top:1px solid var(--card-brd);font-weight:700}
   .row:first-child{border-top:0}
-  .row .ic{width:22px;text-align:center}
-  .row small{display:block;color:var(--muted);font-weight:600;font-size:12px}
-  .spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.25);
-    border-top-color:var(--pink);border-radius:50%;animation:sp .8s linear infinite}
+  .row .ic{width:24px;text-align:center;font-size:17px;flex:none}
+  .row .nm{font-size:15px}
+  .row small{display:block;color:var(--muted);font-weight:600;font-size:12px;margin-top:1px}
+  .spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.22);
+    border-top-color:var(--pink);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
   @keyframes sp{to{transform:rotate(360deg)}}
-  .banner{border-radius:12px;padding:12px 14px;font-weight:700;font-size:14px;margin-bottom:14px;display:none}
-  .banner.err{display:block;background:rgba(255,80,80,.14);border:1px solid rgba(255,80,80,.4);color:#ffb3b3}
-  .banner.ok{display:block;background:rgba(43,214,123,.12);border:1px solid rgba(43,214,123,.4);color:#8ff0bd}
+  .banner{border-radius:13px;padding:13px 15px;font-weight:700;font-size:14px;margin-bottom:13px;display:none}
+  .banner.err{display:block;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.38);color:#ffb0b0}
+  .banner.ok{display:block;background:rgba(43,214,123,.1);border:1px solid rgba(43,214,123,.4);color:#8ff0bd}
+  footer{text-align:center;color:var(--muted-2);font-size:11px;font-weight:700;letter-spacing:1px;
+    text-transform:uppercase;margin-top:20px}
 </style>
 </head>
 <body>
+<div class="wrap">
   <header>
-    <div class="mark">T</div>
-    <div><h1>TABOOST Poster</h1><small>one upload → every platform</small></div>
+    <img class="logo" src="genie.jpg" alt="TABOOST" />
+    <div class="brand"><h1>TABOOST&nbsp;Poster</h1><p>One upload, every platform</p></div>
+    <span class="beta">BETA</span>
   </header>
 
   <div id="banner" class="banner"></div>
 
   <div class="card">
-    <label class="lbl">1 · Your video</label>
+    <div class="step"><span class="n">1</span><span class="t">Your video</span></div>
     <label class="drop" id="drop" for="file">
-      Tap to choose a video
-      <b id="fname" style="display:none"></b>
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <span class="big">Choose a video</span>
+      <span class="sub">MP4 or MOV from your camera roll</span>
+      <span class="fn" id="fname" style="display:none"></span>
     </label>
     <input type="file" id="file" accept="video/*" />
   </div>
 
   <div class="card">
-    <label class="lbl">2 · Caption</label>
-    <textarea id="caption" placeholder="Write your caption + #hashtags…"></textarea>
+    <div class="step"><span class="n">2</span><span class="t">Caption</span></div>
+    <textarea id="caption" maxlength="2000" placeholder="Write your caption + #hashtags…"></textarea>
+    <div class="cc" id="cc">0</div>
   </div>
 
   <div class="card">
-    <label class="lbl">3 · Post to</label>
-    <div class="chips" id="chips"><div class="hint">Checking what's connected…</div></div>
+    <div class="step"><span class="n">3</span><span class="t">Post to</span></div>
+    <div class="chips" id="chips"><div class="skeleton"></div><div class="skeleton"></div></div>
     <div class="hint" id="chiphint"></div>
   </div>
 
-  <button class="post" id="post" disabled>Post now</button>
   <div id="prog"></div>
+  <footer>TABOOST · secure · no passwords stored</footer>
+</div>
+
+<div class="bar"><div class="inner">
+  <button class="post" id="post" disabled>Choose a video to start</button>
+</div></div>
 
 <script>
 const KEY = new URLSearchParams(location.search).get("k") || "";
 const hdr = KEY ? { "x-taboost-key": KEY } : {};
 const api = (p, opts={}) => fetch(p, { ...opts, headers: { ...(opts.headers||{}), ...hdr } });
 const $ = (id) => document.getElementById(id);
-let platforms = [];          // {id,label,loggedIn,verified}
+let platforms = [];
 const selected = new Set();
 
-function banner(msg, kind){ const b=$("banner"); b.className="banner "+kind; b.textContent=msg; if(!msg) b.style.display="none"; }
+function banner(msg, kind){ const b=$("banner"); if(!msg){b.style.display="none";return;} b.className="banner "+kind; b.textContent=msg; }
 
 function renderChips(){
   const box = $("chips"); box.innerHTML = "";
-  const anyLoggedIn = platforms.some(p=>p.loggedIn);
   if(!platforms.length){ box.innerHTML='<div class="hint">No platforms found.</div>'; return; }
   for(const p of platforms){
-    const el = document.createElement("div");
     const on = p.loggedIn;
+    const el = document.createElement("div");
     el.className = "chip " + (on?"on":"off") + (selected.has(p.id)?" sel":"");
     el.innerHTML = `<span class="dot"></span><span>${p.label}</span>` +
-      (on ? (p.verified?"":`<span class="tag">beta</span>`) : `<span class="tag">not connected</span>`);
-    if(on){ el.onclick = () => { selected.has(p.id)?selected.delete(p.id):selected.add(p.id); renderChips(); syncPost(); }; }
+      (on ? (p.verified?"":`<span class="mini">beta</span>`) : `<span class="mini">connect on desktop</span>`);
+    if(on) el.onclick = () => { selected.has(p.id)?selected.delete(p.id):selected.add(p.id); renderChips(); syncPost(); };
     box.appendChild(el);
   }
-  $("chiphint").textContent = anyLoggedIn
-    ? "Only connected accounts can be picked. Green dot = ready."
-    : "Nothing connected yet — connect your accounts once on the computer running this, then refresh.";
+  const anyOn = platforms.some(p=>p.loggedIn);
+  $("chiphint").textContent = anyOn
+    ? "Green dot = connected and ready. Tap to include."
+    : "Nothing connected yet. Sign into your accounts once on the computer running this, then refresh.";
 }
 
 async function loadStatus(){
@@ -131,23 +187,35 @@ async function loadStatus(){
     if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error || ("status "+r.status));
     const data = await r.json();
     platforms = Object.entries(data).map(([id,v]) => ({ id, label:v.label, loggedIn:v.loggedIn, verified:v.verified }));
-    for(const p of platforms) if(p.loggedIn) selected.add(p.id);   // default: all ready ones
+    for(const p of platforms) if(p.loggedIn) selected.add(p.id);
     renderChips(); syncPost();
-  }catch(e){ banner("Couldn't reach the poster: "+e.message, "err"); }
+  }catch(e){ $("chips").innerHTML=""; banner("Couldn't reach the poster: "+e.message, "err"); }
 }
 
+$("caption").oninput = () => { $("cc").textContent = $("caption").value.length; };
+
 $("file").onchange = () => {
-  const f = $("file").files[0];
-  const d = $("drop"), n = $("fname");
-  if(f){ d.classList.add("have"); n.style.display="block"; n.textContent=f.name; d.childNodes[0].textContent="Video ready"; }
-  else { d.classList.remove("have"); n.style.display="none"; d.childNodes[0].textContent="Tap to choose a video"; }
+  const f = $("file").files[0], d = $("drop"), n = $("fname");
+  if(f){
+    d.classList.add("have");
+    d.querySelector(".big").textContent = "Video ready";
+    d.querySelector(".sub").textContent = (f.size/1048576).toFixed(1) + " MB · tap to change";
+    n.style.display="block"; n.textContent = f.name;
+  }else{
+    d.classList.remove("have");
+    d.querySelector(".big").textContent = "Choose a video";
+    d.querySelector(".sub").textContent = "MP4 or MOV from your camera roll";
+    n.style.display="none";
+  }
   syncPost();
 };
 
 function syncPost(){
   const ready = $("file").files[0] && selected.size>0;
   const b = $("post"); b.disabled = !ready;
-  if(ready) b.textContent = `Post to ${selected.size} ${selected.size===1?"platform":"platforms"}`;
+  if(!$("file").files[0]) b.textContent = "Choose a video to start";
+  else if(!selected.size) b.textContent = "Pick a platform";
+  else b.textContent = `Post to ${selected.size} ${selected.size===1?"platform":"platforms"}`;
 }
 
 $("post").onclick = async () => {
@@ -162,6 +230,7 @@ $("post").onclick = async () => {
     const r = await api("/api/post", { method:"POST", body: fd });
     const j = await r.json();
     if(!r.ok) throw new Error(j.error || ("error "+r.status));
+    b.textContent = "Posting…";
     pollJob(j.id);
   }catch(e){ banner("Upload failed: "+e.message, "err"); b.classList.remove("busy"); syncPost(); }
 };
@@ -170,16 +239,18 @@ async function pollJob(id){
   const names = Object.fromEntries(platforms.map(p=>[p.id,p.label]));
   const draw = (job) => {
     const prog = $("prog"); prog.innerHTML = "";
+    const card = document.createElement("div"); card.className="card";
     for(const pid of selected){
       const res = job.results[pid];
-      const row = document.createElement("div"); row.className="row";
       let ic = '<span class="spin"></span>', sub = "posting…";
       if(res === "posted"){ ic="✅"; sub="posted"; }
-      else if(res === "dry-run"){ ic="✅"; sub="ready (dry run)"; }
-      else if(res && res.startsWith("error")){ ic="❌"; sub=res.replace(/^error:\s*/,""); }
-      row.innerHTML = `<span class="ic">${ic}</span><div><div>${names[pid]||pid}</div><small>${sub}</small></div>`;
-      prog.appendChild(row);
+      else if(res === "dry-run"){ ic="✅"; sub="ready (test run)"; }
+      else if(res && String(res).startsWith("error")){ ic="⚠️"; sub=String(res).replace(/^error:\s*/,""); }
+      const row = document.createElement("div"); row.className="row";
+      row.innerHTML = `<span class="ic">${ic}</span><div><div class="nm">${names[pid]||pid}</div><small>${sub}</small></div>`;
+      card.appendChild(row);
     }
+    prog.appendChild(card);
   };
   const b = $("post");
   const tick = async () => {
@@ -189,12 +260,12 @@ async function pollJob(id){
       if(job.status === "done"){
         const errs = Object.values(job.results).filter(v=>String(v).startsWith("error")).length;
         const ok = Object.values(job.results).filter(v=>v==="posted"||v==="dry-run").length;
-        banner(errs? `Done — ${ok} posted, ${errs} had trouble.` : `🎉 Posted to all ${ok}!`, errs?"err":"ok");
-        b.classList.remove("busy"); b.textContent="Post another"; b.disabled=false;
+        banner(errs ? `Done — ${ok} posted, ${errs} need a look.` : `Posted to all ${ok}! 🎉`, errs?"err":"ok");
+        b.classList.remove("busy"); b.disabled=false; b.textContent="Post another";
         b.onclick = () => location.reload();
         return;
       }
-    }catch(e){ /* keep polling */ }
+    }catch(e){}
     setTimeout(tick, 1500);
   };
   tick();
