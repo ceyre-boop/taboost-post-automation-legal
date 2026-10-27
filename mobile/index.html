@@ -76,8 +76,12 @@
   .chip.on .dot{background:var(--ok);box-shadow:0 0 8px rgba(43,214,123,.7)}
   .chip.sel{border-color:var(--pink);background:rgba(255,0,89,.16);color:#fff;box-shadow:inset 0 0 0 1px var(--pink)}
   .chip.sel .dot{background:#fff;box-shadow:none}
-  .chip.off{opacity:.4;cursor:not-allowed}
+  .chip.connect{opacity:.7;border-style:dashed}
+  .chip.connect .mini{color:var(--pink)}
   .chip .mini{font-size:9px;font-weight:800;color:var(--muted-2);text-transform:uppercase;letter-spacing:.5px}
+  .refresh{margin-top:4px;width:100%;background:transparent;border:1px solid var(--card-brd);
+    color:var(--muted);border-radius:12px;padding:10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+  .refresh:active{background:var(--field)}
   .hint{font-size:12px;color:var(--muted);margin-top:11px;line-height:1.4}
   .skeleton{height:42px;border-radius:13px;background:
     linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.09),rgba(255,255,255,.04));
@@ -169,16 +173,35 @@ function renderChips(){
   for(const p of platforms){
     const on = p.loggedIn;
     const el = document.createElement("div");
-    el.className = "chip " + (on?"on":"off") + (selected.has(p.id)?" sel":"");
+    el.className = "chip " + (on?"on":"connect") + (selected.has(p.id)?" sel":"");
     el.innerHTML = `<span class="dot"></span><span>${p.label}</span>` +
-      (on ? (p.verified?"":`<span class="mini">beta</span>`) : `<span class="mini">connect on desktop</span>`);
-    if(on) el.onclick = () => { selected.has(p.id)?selected.delete(p.id):selected.add(p.id); renderChips(); syncPost(); };
+      (on ? (p.verified?"":`<span class="mini">beta</span>`) : `<span class="mini">tap to connect</span>`);
+    el.onclick = on
+      ? () => { selected.has(p.id)?selected.delete(p.id):selected.add(p.id); renderChips(); syncPost(); }
+      : () => connect(p.id, p.label);
     box.appendChild(el);
   }
+  // refresh control
+  const refresh = document.createElement("button");
+  refresh.className = "refresh"; refresh.type = "button";
+  refresh.innerHTML = "↻ Refresh connections";
+  refresh.onclick = loadStatus;
+  box.appendChild(refresh);
+
   const anyOn = platforms.some(p=>p.loggedIn);
-  $("chiphint").textContent = anyOn
-    ? "Green dot = connected and ready. Tap to include."
-    : "Nothing connected yet. Sign into your accounts once on the computer running this, then refresh.";
+  $("chiphint").innerHTML = anyOn
+    ? "Green dot = connected. Tap a grey one to connect it, then Refresh."
+    : "Tap a platform to connect it (sign in on the computer running this), then Refresh.";
+}
+
+async function connect(id, label){
+  banner(`Opening ${label} sign-in on the computer… log in there, then tap Refresh.`, "ok");
+  try{
+    const r = await api("/api/login", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ platform:id }) });
+    if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error || ("error "+r.status));
+    // auto-check a few times so the chip flips to green once they finish signing in
+    let n=0; const iv=setInterval(async()=>{ n++; await loadStatus(); if(platforms.find(p=>p.id===id)?.loggedIn || n>20) clearInterval(iv); }, 3000);
+  }catch(e){ banner(`Couldn't open ${label}: ${e.message}`, "err"); }
 }
 
 async function loadStatus(){

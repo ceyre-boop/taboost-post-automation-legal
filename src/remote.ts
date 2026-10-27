@@ -11,13 +11,22 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { networkInterfaces } from "node:os";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { launchChrome, killToolChrome } from "./chrome.ts";
 import { startServer } from "./server.ts";
 import { CDP_PORT, APP_DIR } from "./config.ts";
 
-const URL_FILE = join(APP_DIR, "phone-url.txt"); // always holds the current live link
+const URL_FILE = join(APP_DIR, "phone-url.txt");       // always holds the current live link
+const TOKEN_FILE = join(APP_DIR, "access-token.txt");  // stable key so the link survives restarts
+
+/** Reuse the saved access key if there is one, so the phone link stays the same. */
+function stableToken(): string {
+  try { const t = readFileSync(TOKEN_FILE, "utf8").trim(); if (t) return t; } catch {}
+  const t = randomBytes(9).toString("base64url");
+  try { mkdirSync(APP_DIR, { recursive: true }); writeFileSync(TOKEN_FILE, t); } catch {}
+  return t;
+}
 
 const arg = (name: string, fallback?: string): string | undefined => {
   const i = process.argv.indexOf(`--${name}`);
@@ -26,7 +35,7 @@ const arg = (name: string, fallback?: string): string | undefined => {
 const has = (flag: string) => process.argv.includes(`--${flag}`);
 
 let PORT = Number(arg("port")) || 4747;
-const TOKEN = randomBytes(9).toString("base64url"); // ~12 url-safe chars
+const TOKEN = has("new-key") ? randomBytes(9).toString("base64url") : stableToken();
 
 function have(cmd: string): boolean {
   try { return spawnSync("which", [cmd], { stdio: "ignore" }).status === 0; }
