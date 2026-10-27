@@ -56,7 +56,9 @@ function manageTunnel(port: number, onUrl: (base: string) => void): () => void {
       stdio: ["ignore", "pipe", "pipe"],
     });
     const scan = (buf: Buffer) => {
-      const m = buf.toString().match(/https:\/\/[-a-z0-9]+\.trycloudflare\.com/);
+      // Quick-tunnel hostnames are hyphenated random words (e.g. foo-bar-baz-qux);
+      // the ≥1 hyphen requirement excludes cloudflared's own api.trycloudflare.com.
+      const m = buf.toString().match(/https:\/\/[a-z0-9]+(?:-[a-z0-9]+)+\.trycloudflare\.com/);
       if (m && m[0] !== current) { current = m[0]; onUrl(current); }
     };
     proc.stdout!.on("data", scan);
