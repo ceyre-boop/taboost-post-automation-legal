@@ -214,8 +214,11 @@ export function startServer(
   if (opts.port) PORT = opts.port;
   if (opts.token !== undefined) ACCESS_TOKEN = opts.token;
   const host = opts.host || "127.0.0.1";
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const onErr = (e: Error) => { server.removeListener("error", onErr); reject(e); };
+    server.once("error", onErr);
     server.listen(PORT, host, () => {
+      server.removeListener("error", onErr);
       const u = `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${PORT}`;
       console.log(`TABOOST Poster dashboard: ${u}  (Chrome CDP :${CDP_PORT})`);
       if (opts.open !== false && !process.argv.includes("--no-open")) {

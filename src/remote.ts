@@ -21,7 +21,7 @@ const arg = (name: string, fallback?: string): string | undefined => {
 };
 const has = (flag: string) => process.argv.includes(`--${flag}`);
 
-const PORT = Number(arg("port")) || 4747;
+let PORT = Number(arg("port")) || 4747;
 const TOKEN = randomBytes(9).toString("base64url"); // ~12 url-safe chars
 
 function have(cmd: string): boolean {
@@ -70,7 +70,16 @@ async function main(): Promise<void> {
 
   const useTunnel = !has("lan") && have("cloudflared");
   const host = useTunnel ? "127.0.0.1" : "0.0.0.0";
-  await startServer({ port: PORT, host, open: false, token: TOKEN });
+  // Find a free port — the Electron app or a prior run may already hold 4747.
+  for (let tries = 0; ; tries++) {
+    try { await startServer({ port: PORT, host, open: false, token: TOKEN }); break; }
+    catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "EADDRINUSE" && tries < 10) {
+        console.log(`Port ${PORT} busy, trying ${PORT + 1}…`); PORT++; continue;
+      }
+      throw e;
+    }
+  }
 
   let phoneUrl: string;
   let tunnel: ChildProcess | null = null;
