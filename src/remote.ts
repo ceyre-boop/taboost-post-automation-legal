@@ -11,9 +11,13 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { networkInterfaces } from "node:os";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { launchChrome, killToolChrome } from "./chrome.ts";
 import { startServer } from "./server.ts";
-import { CDP_PORT } from "./config.ts";
+import { CDP_PORT, APP_DIR } from "./config.ts";
+
+const URL_FILE = join(APP_DIR, "phone-url.txt"); // always holds the current live link
 
 const arg = (name: string, fallback?: string): string | undefined => {
   const i = process.argv.indexOf(`--${name}`);
@@ -38,22 +42,34 @@ function lanIP(): string | null {
   return null;
 }
 
-/** Spawn cloudflared and resolve with the public https URL it prints. */
-function startTunnel(): Promise<{ url: string; proc: ChildProcess }> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn("cloudflared", ["tunnel", "--url", `http://127.0.0.1:${PORT}`], {
+/**
+ * Keep a cloudflared quick-tunnel alive. These free tunnels can drop their hostname
+ * even while the process lives, so we respawn on exit and re-announce whenever the
+ * public URL changes. `onUrl` fires with each new base URL. Returns a stop fn.
+ */
+function manageTunnel(port: number, onUrl: (base: string) => void): () => void {
+  let proc: ChildProcess | null = null;
+  let current = "";
+  let stopped = false;
+  const spawnOne = () => {
+    proc = spawn("cloudflared", ["tunnel", "--no-autoupdate", "--url", `http://127.0.0.1:${port}`], {
       stdio: ["ignore", "pipe", "pipe"],
     });
-    let settled = false;
     const scan = (buf: Buffer) => {
       const m = buf.toString().match(/https:\/\/[-a-z0-9]+\.trycloudflare\.com/);
-      if (m && !settled) { settled = true; resolve({ url: m[0], proc }); }
+      if (m && m[0] !== current) { current = m[0]; onUrl(current); }
     };
-    proc.stdout.on("data", scan);
-    proc.stderr.on("data", scan); // cloudflared prints the URL to stderr
-    proc.on("exit", (code) => { if (!settled) { settled = true; reject(new Error(`cloudflared exited (${code})`)); } });
-    setTimeout(() => { if (!settled) { settled = true; reject(new Error("tunnel timed out")); } }, 25_000);
-  });
+    proc.stdout!.on("data", scan);
+    proc.stderr!.on("data", scan); // cloudflared prints the URL to stderr
+    proc.on("exit", () => {
+      if (stopped) return;
+      console.log("Tunnel dropped — reconnecting (the phone link will change)…");
+      current = "";
+      setTimeout(spawnOne, 1500);
+    });
+  };
+  spawnOne();
+  return () => { stopped = true; try { proc?.kill(); } catch {} };
 }
 
 function box(lines: string[]): void {
@@ -81,42 +97,38 @@ async function main(): Promise<void> {
     }
   }
 
-  let phoneUrl: string;
-  let tunnel: ChildProcess | null = null;
+  const lan = lanIP();
+  const lanUrl = `http://${lan ?? "127.0.0.1"}:${PORT}/m?k=${TOKEN}`;
+
+  const announce = (phoneUrl: string, anywhere: boolean) => {
+    try { writeFileSync(URL_FILE, phoneUrl + "\n"); } catch {}
+    try { const p = spawn("pbcopy"); p.stdin.end(phoneUrl); } catch {} // handy on macOS
+    box([
+      "TABOOST Poster is live. Open this on the iPhone:",
+      "",
+      phoneUrl,
+      "",
+      anywhere ? "Works from anywhere (copied to clipboard — AirDrop/text it)."
+               : "Phone must be on the SAME Wi-Fi (copied to clipboard).",
+      ...(anywhere && lan ? [`Same-Wi-Fi backup: ${lanUrl}`] : []),
+      "",
+      "First: connect accounts in the Chrome window that opened,",
+      "then refresh the phone page. Keep this running.",
+    ]);
+    console.log(`Chrome CDP :${CDP_PORT} · access key ${TOKEN} · current link saved to ${URL_FILE}`);
+    console.log("Press Ctrl-C to stop.\n");
+  };
+
+  let stopTunnel: (() => void) | null = null;
   if (useTunnel) {
-    try {
-      const t = await startTunnel();
-      tunnel = t.proc;
-      phoneUrl = `${t.url}/m?k=${TOKEN}`;
-    } catch (e) {
-      console.log(`Tunnel failed (${(e as Error).message}); falling back to same-Wi-Fi link.`);
-      const ip = lanIP();
-      phoneUrl = ip ? `http://${ip}:${PORT}/m?k=${TOKEN}` : `http://127.0.0.1:${PORT}/m?k=${TOKEN}`;
-    }
+    // Self-healing: re-announces (and rewrites the link file) on every reconnect.
+    stopTunnel = manageTunnel(PORT, (base) => announce(`${base}/m?k=${TOKEN}`, true));
   } else {
-    const ip = lanIP();
-    phoneUrl = ip ? `http://${ip}:${PORT}/m?k=${TOKEN}` : `http://127.0.0.1:${PORT}/m?k=${TOKEN}`;
-    if (!have("cloudflared")) console.log("(cloudflared not installed — using same-Wi-Fi link. `brew install cloudflared` for an anywhere link.)");
+    if (!have("cloudflared")) console.log("(cloudflared not installed — same-Wi-Fi link only. `brew install cloudflared` for an anywhere link.)");
+    announce(lanUrl, false);
   }
 
-  // Copy to clipboard on macOS for easy AirDrop/text.
-  try { const p = spawn("pbcopy"); p.stdin.end(phoneUrl); } catch {}
-
-  box([
-    "TABOOST Poster is live. Open this on the iPhone:",
-    "",
-    phoneUrl,
-    "",
-    useTunnel ? "Works from anywhere (copied to clipboard — AirDrop/text it)."
-              : "Phone must be on the SAME Wi-Fi (link copied to clipboard).",
-    "",
-    "First: connect accounts in the Chrome window that opened,",
-    "then refresh the phone page. Keep this window running.",
-  ]);
-  console.log(`Chrome CDP :${CDP_PORT} · access key ${TOKEN}`);
-  console.log("Press Ctrl-C to stop.\n");
-
-  const stop = () => { try { tunnel?.kill(); } catch {} ; killToolChrome(); process.exit(0); };
+  const stop = () => { try { stopTunnel?.(); } catch {} ; killToolChrome(); process.exit(0); };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 }
