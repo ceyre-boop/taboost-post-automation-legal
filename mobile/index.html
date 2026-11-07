@@ -50,14 +50,18 @@
   .step .t{font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
 
   /* ---- file picker ---- */
-  .drop{border:1.5px dashed rgba(255,255,255,.18);border-radius:15px;padding:24px 16px;
-    text-align:center;color:var(--muted);font-weight:600;transition:.15s;cursor:pointer}
-  .drop svg{display:block;margin:0 auto 9px;opacity:.6}
-  .drop .big{color:var(--paper);font-size:15.5px;font-weight:700}
-  .drop .sub{font-size:12px;margin-top:3px;color:var(--muted-2)}
-  .drop.have{border-style:solid;border-color:var(--pink);background:rgba(255,0,89,.07);color:var(--paper)}
+  .drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    min-height:132px;border:1.5px dashed rgba(255,255,255,.2);border-radius:15px;padding:20px 16px;
+    text-align:center;color:var(--muted);font-weight:600;transition:.15s;cursor:pointer;
+    background:var(--field);-webkit-tap-highlight-color:transparent}
+  .drop:active{transform:scale(.99)}
+  .drop svg{display:block;margin:0 0 6px;opacity:.7;color:var(--pink)}
+  .drop .big{display:block;color:var(--paper);font-size:16px;font-weight:700}
+  .drop .sub{display:block;font-size:12.5px;color:var(--muted-2)}
+  .drop.have{min-height:0;border-style:solid;border-color:var(--pink);background:rgba(255,0,89,.07);color:var(--paper)}
   .drop.have svg{opacity:1}
-  .drop.have .fn{display:block;font-size:14px;font-weight:700;margin-top:3px;word-break:break-all;color:var(--paper)}
+  .drop.have .fn{display:block;max-width:100%;font-size:13px;font-weight:600;color:var(--muted);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   input[type=file]{display:none}
 
   /* ---- caption ---- */
@@ -223,7 +227,7 @@ $("file").onchange = () => {
     d.classList.add("have");
     d.querySelector(".big").textContent = "Video ready";
     d.querySelector(".sub").textContent = (f.size/1048576).toFixed(1) + " MB · tap to change";
-    n.style.display="block"; n.textContent = f.name;
+    n.style.display="block"; n.textContent = f.name; n.title = f.name;
   }else{
     d.classList.remove("have");
     d.querySelector(".big").textContent = "Choose a video";
