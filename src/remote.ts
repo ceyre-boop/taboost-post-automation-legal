@@ -42,6 +42,17 @@ function have(cmd: string): boolean {
   catch { return false; }
 }
 
+/** The Mac's Bonjour name (e.g. TABOOSTs-MacBook-Pro.local). Unlike the IP it doesn't
+ *  change when the Wi-Fi hands out a new address, so the phone link keeps working. */
+function bonjourHost(): string | null {
+  try {
+    const r = spawnSync("scutil", ["--get", "LocalHostName"], { encoding: "utf8" });
+    const n = r.stdout?.trim();
+    if (r.status === 0 && n) return `${n}.local`;
+  } catch {}
+  return null;
+}
+
 function lanIP(): string | null {
   for (const iface of Object.values(networkInterfaces())) {
     for (const net of iface ?? []) {
@@ -109,7 +120,9 @@ async function main(): Promise<void> {
   }
 
   const lan = lanIP();
-  const lanUrl = `http://${lan ?? "127.0.0.1"}:${PORT}/m?k=${TOKEN}`;
+  const ipUrl = `http://${lan ?? "127.0.0.1"}:${PORT}/m?k=${TOKEN}`;
+  const mdns = bonjourHost();
+  const lanUrl = mdns ? `http://${mdns}:${PORT}/m?k=${TOKEN}` : ipUrl;
 
   const announce = (phoneUrl: string, anywhere: boolean) => {
     try { writeFileSync(URL_FILE, phoneUrl + "\n"); } catch {}
@@ -122,6 +135,7 @@ async function main(): Promise<void> {
       anywhere ? "Works from anywhere (copied to clipboard — AirDrop/text it)."
                : "Phone must be on the SAME Wi-Fi (copied to clipboard).",
       ...(anywhere && lan ? [`Same-Wi-Fi backup: ${lanUrl}`] : []),
+      ...(!anywhere && mdns ? [`(Backup by address, changes with the Wi-Fi: ${ipUrl})`] : []),
       "",
       "First: connect accounts in the Chrome window that opened,",
       "then refresh the phone page. Keep this running.",

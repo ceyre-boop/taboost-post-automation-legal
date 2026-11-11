@@ -116,6 +116,33 @@
   .banner{border-radius:13px;padding:13px 15px;font-weight:700;font-size:14px;margin-bottom:13px;display:none}
   .banner.err{display:block;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.38);color:#ffb0b0}
   .banner.ok{display:block;background:rgba(43,214,123,.1);border:1px solid rgba(43,214,123,.4);color:#8ff0bd}
+  /* ---- who's posting ---- */
+  .who input{width:100%;background:var(--field);color:var(--paper);border:1px solid var(--card-brd);
+    border-radius:13px;padding:13px;font:inherit;font-size:16px;margin-bottom:10px}
+  .who button,.sheet .btn{border:0;border-radius:13px;padding:13px 16px;font:inherit;font-weight:800;
+    font-size:15px;background:var(--pink);color:#000;cursor:pointer}
+  .who button{width:100%}
+  .me{font-size:12px;color:var(--muted);font-weight:700;margin:-12px 2px 14px}
+  .me b{color:var(--paper)}
+
+  /* ---- sign-in sheet ---- */
+  .sheet{position:fixed;inset:0;z-index:50;background:#000;display:none;flex-direction:column;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .sheet.open{display:flex}
+  .sheet .top{display:flex;align-items:center;gap:8px;padding:10px 12px}
+  .sheet .top .ttl{flex:1;font-weight:800;font-size:15px;text-align:center}
+  .sheet .ghost{background:transparent;color:var(--paper);border:1px solid var(--card-brd)}
+  .sheet .screen{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 8px}
+  .sheet .frame{position:relative;height:100%;max-width:100%;aspect-ratio:390/780;border-radius:14px;
+    overflow:hidden;background:#111;touch-action:none}
+  .sheet .frame img{width:100%;height:100%;display:block;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  .sheet .frame .wait{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-weight:700;font-size:14px}
+  .sheet .type{display:flex;gap:8px;padding:10px 12px}
+  .sheet .type input{flex:1;min-width:0;background:var(--field);color:var(--paper);border:1px solid var(--card-brd);
+    border-radius:12px;padding:12px;font:inherit;font-size:16px}
+  .sheet .type .btn{padding:12px 14px}
+  .sheet .tip{color:var(--muted);font-size:12px;font-weight:600;text-align:center;padding:0 16px 8px}
+
   footer{text-align:center;color:var(--muted-2);font-size:11px;font-weight:700;letter-spacing:1px;
     text-transform:uppercase;margin-top:20px}
 </style>
@@ -129,6 +156,16 @@
   </header>
 
   <div id="banner" class="banner"></div>
+
+  <div class="card who" id="who" style="display:none">
+    <div class="step"><span class="n">★</span><span class="t">Who's posting?</span></div>
+    <input id="whoname" placeholder="Your first name" autocomplete="given-name" />
+    <button id="whogo" type="button">Continue</button>
+    <div class="hint">This phone gets its own private set of accounts. After this, bookmark the page or Share → Add to Home Screen so it remembers you.</div>
+  </div>
+  <div class="me" id="me" style="display:none"></div>
+
+  <div id="main" style="display:none">
 
   <div class="card">
     <div class="step"><span class="n">1</span><span class="t">Your video</span></div>
@@ -154,17 +191,36 @@
   </div>
 
   <div id="prog"></div>
+  </div>
   <footer>TABOOST · secure · no passwords stored</footer>
 </div>
 
-<div class="bar"><div class="inner">
+<div class="sheet" id="sheet">
+  <div class="top">
+    <button class="btn ghost" id="sback" type="button">‹ Back</button>
+    <div class="ttl" id="sttl">Sign in</div>
+    <button class="btn" id="sdone" type="button">Done</button>
+  </div>
+  <div class="tip">Tap a box on the page, then type below. Swipe the page to scroll.</div>
+  <div class="screen"><div class="frame" id="sframe"><img id="simg" alt="" /><div class="wait" id="swait">Opening sign-in…</div></div></div>
+  <div class="type">
+    <input id="stype" placeholder="Type here…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+    <button class="btn ghost" id="sbs" type="button">⌫</button>
+    <button class="btn" id="sgo" type="button">Enter</button>
+  </div>
+</div>
+
+<div class="bar" id="bar" style="display:none"><div class="inner">
   <button class="post" id="post" disabled>Choose a video to start</button>
 </div></div>
 
 <script>
-const KEY = new URLSearchParams(location.search).get("k") || "";
-const hdr = KEY ? { "x-taboost-key": KEY } : {};
-const api = (p, opts={}) => fetch(p, { ...opts, headers: { ...(opts.headers||{}), ...hdr } });
+const QS = new URLSearchParams(location.search);
+const KEY = QS.get("k") || "";
+let DEV = QS.get("d") || (()=>{ try{ return localStorage.getItem("taboost-device")||""; }catch{ return ""; } })();
+const hdrs = () => ({ ...(KEY?{"x-taboost-key":KEY}:{}), ...(DEV?{"x-taboost-device":DEV}:{}) });
+const api = (p, opts={}) => fetch(p, { ...opts, headers: { ...(opts.headers||{}), ...hdrs() } });
+const q = (extra={}) => new URLSearchParams({ ...(KEY?{k:KEY}:{}), ...(DEV?{d:DEV}:{}), ...extra }).toString();
 const $ = (id) => document.getElementById(id);
 let platforms = [];
 const selected = new Set();
@@ -194,18 +250,71 @@ function renderChips(){
 
   const anyOn = platforms.some(p=>p.loggedIn);
   $("chiphint").innerHTML = anyOn
-    ? "Green dot = connected. Tap a grey one to connect it, then Refresh."
-    : "Tap a platform to connect it (sign in on the computer running this), then Refresh.";
+    ? "Green dot = connected. Tap a grey one to sign in to it."
+    : "Tap a platform to sign in to it right here. You only do this once per account.";
 }
 
+// ---------- sign in from the phone ----------
+let es = null, watch = null, signingIn = null;
 async function connect(id, label){
-  banner(`Opening ${label} sign-in on the computer… log in there, then tap Refresh.`, "ok");
+  banner("", "");
+  signingIn = { id, label };
+  $("sttl").textContent = "Sign in to " + label;
+  $("simg").removeAttribute("src"); $("swait").style.display = "grid"; $("swait").textContent = "Opening sign-in…";
+  $("sheet").classList.add("open");
   try{
-    const r = await api("/api/login", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ platform:id }) });
+    const r = await api("/api/remote/open", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ platform:id }) });
     if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error || ("error "+r.status));
-    // auto-check a few times so the chip flips to green once they finish signing in
-    let n=0; const iv=setInterval(async()=>{ n++; await loadStatus(); if(platforms.find(p=>p.id===id)?.loggedIn || n>20) clearInterval(iv); }, 3000);
-  }catch(e){ banner(`Couldn't open ${label}: ${e.message}`, "err"); }
+    es = new EventSource("/api/remote/stream?" + q());
+    es.onmessage = (m) => { $("simg").src = "data:image/jpeg;base64," + m.data; $("swait").style.display = "none"; };
+    es.addEventListener("closed", () => closeSheet(false));
+    watch = setInterval(async () => {
+      try{
+        const s = await (await api("/api/status")).json();
+        if(s[id]?.loggedIn) { closeSheet(true); banner(`${label} connected ✓ — it'll stay connected on this phone.`, "ok"); }
+      }catch{}
+    }, 2500);
+  }catch(e){ closeSheet(false); banner(`Couldn't open ${label}: ${e.message}`, "err"); }
+}
+function closeSheet(tellServer){
+  if(es){ es.close(); es = null; }
+  if(watch){ clearInterval(watch); watch = null; }
+  $("sheet").classList.remove("open");
+  if(tellServer !== false) api("/api/remote/close", { method:"POST" }).catch(()=>{});
+  signingIn = null;
+  loadStatus();
+}
+// One at a time, in order: fast typing must never arrive scrambled.
+let sendQ = Promise.resolve();
+const send = (ev) => (sendQ = sendQ.then(() => api("/api/remote/input", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(ev) }).catch(()=>{})));
+$("sdone").onclick = () => closeSheet(true);
+$("sback").onclick = () => send({ type:"back" });
+$("sbs").onclick = () => send({ type:"key", key:"Backspace" });
+$("sgo").onclick = () => send({ type:"key", key:"Enter" });
+{
+  const fr = $("sframe"); let start = null, last = null;
+  const pt = (t) => { const r = fr.getBoundingClientRect(); return { x:(t.clientX-r.left)/r.width, y:(t.clientY-r.top)/r.height, cy:t.clientY, h:r.height }; };
+  fr.addEventListener("touchstart", (e) => { start = last = pt(e.touches[0]); e.preventDefault(); }, { passive:false });
+  fr.addEventListener("touchmove", (e) => {
+    const p = pt(e.touches[0]);
+    const dy = (last.cy - p.cy) * (780 / p.h);
+    if(Math.abs(p.cy - start.cy) > 8 && Math.abs(dy) > 4){ send({ type:"scroll", x:p.x, y:p.y, dy }); last = p; }
+    e.preventDefault();
+  }, { passive:false });
+  fr.addEventListener("touchend", (e) => {
+    if(start && last && Math.abs(last.cy - start.cy) <= 8) send({ type:"tap", x:start.x, y:start.y });
+    start = last = null; e.preventDefault();
+  }, { passive:false });
+  fr.addEventListener("click", (e) => { const p = pt(e); send({ type:"tap", x:p.x, y:p.y }); }); // desktop / testing
+  const ti = $("stype");
+  ti.addEventListener("beforeinput", (e) => {
+    if(e.inputType === "insertText" || e.inputType === "insertReplacementText" || e.inputType === "insertFromPaste"){
+      const t = e.data ?? e.dataTransfer?.getData("text/plain") ?? ""; if(t) send({ type:"text", text:t });
+    } else if(e.inputType === "deleteContentBackward"){ send({ type:"key", key:"Backspace" }); }
+    else if(e.inputType === "insertLineBreak"){ send({ type:"key", key:"Enter" }); }
+    e.preventDefault();
+  });
+  ti.addEventListener("keydown", (e) => { if(e.key === "Enter"){ e.preventDefault(); send({ type:"key", key:"Enter" }); } });
 }
 
 async function loadStatus(){
@@ -298,7 +407,37 @@ async function pollJob(id){
   tick();
 }
 
-loadStatus();
+// ---------- who's posting (each phone = its own accounts) ----------
+function remember(){
+  try{ localStorage.setItem("taboost-device", DEV); }catch{}
+  const u = new URL(location.href); u.searchParams.set("d", DEV); history.replaceState(null, "", u);
+}
+function showMain(name){
+  $("who").style.display = "none"; $("main").style.display = ""; $("bar").style.display = "";
+  $("me").style.display = ""; $("me").innerHTML = `Posting as <b></b>`; $("me").querySelector("b").textContent = name;
+  loadStatus();
+}
+function askWho(){ $("who").style.display = ""; $("main").style.display = "none"; $("bar").style.display = "none"; setTimeout(()=>$("whoname").focus(), 50); }
+$("whogo").onclick = async () => {
+  const name = $("whoname").value.trim(); if(!name){ $("whoname").focus(); return; }
+  try{
+    const r = await api("/api/device", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ name }) });
+    const j = await r.json(); if(!r.ok) throw new Error(j.error || r.status);
+    DEV = j.id; remember(); showMain(j.name);
+    banner("Saved. Bookmark this page now (or Share → Add to Home Screen) — that link is how it remembers you.", "ok");
+  }catch(e){ banner("Couldn't save: " + e.message, "err"); }
+};
+$("whoname").addEventListener("keydown", (e)=>{ if(e.key==="Enter") $("whogo").click(); });
+(async () => {
+  if(!DEV) return askWho();
+  try{
+    const r = await api("/api/device");
+    if(r.status === 401) throw new Error((await r.json()).error);
+    if(!r.ok){ DEV = ""; try{ localStorage.removeItem("taboost-device"); }catch{} return askWho(); }
+    const j = await r.json(); remember(); showMain(j.name);
+  }catch(e){ banner("Couldn't reach the poster: " + e.message, "err"); }
+})();
+
 </script>
 </body>
 </html>

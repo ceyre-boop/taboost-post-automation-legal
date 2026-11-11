@@ -7,7 +7,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSy
 import { getPlatform, PLATFORMS } from "./platforms/index.ts";
 import { withBrowser, pageFor } from "./browser.ts";
 import { recordPost } from "./history.ts";
-import { APP_DIR } from "./config.ts";
+import { APP_DIR, defaultProfile, type Profile } from "./config.ts";
 import { sleep } from "./sleep.ts";
 
 export const BATCHES_DIR = join(APP_DIR, "batches");
@@ -104,7 +104,7 @@ export function buildBatch(input: BatchInput): Batch {
 }
 
 /** Which registered platforms currently have a signed-in session. */
-export async function loggedInPlatforms(): Promise<string[]> {
+export async function loggedInPlatforms(profile: Profile = defaultProfile): Promise<string[]> {
   return withBrowser(async (ctx) => {
     const out: string[] = [];
     for (const p of Object.values(PLATFORMS)) {
@@ -112,7 +112,7 @@ export async function loggedInPlatforms(): Promise<string[]> {
       if (await p.isLoggedIn(page).catch(() => false)) out.push(p.id);
     }
     return out;
-  });
+  }, "about:blank", profile);
 }
 
 async function postOnPage(
@@ -139,6 +139,7 @@ export async function runBatch(
   batch: Batch,
   log: (m: string) => void = () => {},
   onUpdate: (b: Batch) => void = () => {},
+  profile: Profile = defaultProfile,
 ): Promise<Batch> {
   const todo = batch.items.filter((i) => i.status === "pending" || i.status === "error");
   if (!todo.length) { log("Nothing to do — all items already done."); return batch; }
@@ -181,7 +182,7 @@ export async function runBatch(
         saveBatch(batch); onUpdate(batch);
       }));
     }
-  });
+  }, "about:blank", profile);
 
   const done = batch.items.filter((i) => i.status === "done").length;
   const err = batch.items.filter((i) => i.status === "error").length;

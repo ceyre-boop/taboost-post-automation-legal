@@ -3,7 +3,9 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import { APP_DIR, CDP_PORT } from "./config.ts";
+import { APP_DIR, CDP_PORT, defaultProfile, type Profile } from "./config.ts";
+import { getDevice, createDevice, profileOf, type Device } from "./devices.ts";
+import { openView, getView, closeView } from "./remote-view.ts";
 import { withBrowser, pageFor } from "./browser.ts";
 import { PLATFORMS, getPlatform } from "./platforms/index.ts";
 import { buildBatch, runBatch as runBatchEngine, type Batch } from "./batch.ts";
@@ -50,7 +52,21 @@ interface Job {
 }
 const jobs = new Map<string, Job>();
 
-async function status() {
+/** The phone's device (from the x-taboost-device header or ?d=), if it has one. */
+function deviceFor(req: IncomingMessage, url: URL): Device | null {
+  return getDevice((req.headers["x-taboost-device"] as string) || url.searchParams.get("d"));
+}
+/** A phone with a device id posts from ITS profile. An id we don't know is refused
+ *  rather than silently falling back to the default profile's accounts. */
+function profileFor(req: IncomingMessage, url: URL): Profile {
+  const raw = (req.headers["x-taboost-device"] as string) || url.searchParams.get("d");
+  if (!raw) return defaultProfile;
+  const d = getDevice(raw);
+  if (!d) throw new Error("This phone isn't registered any more. Reopen the link and enter your name.");
+  return profileOf(d);
+}
+
+async function status(profile: Profile = defaultProfile) {
   return withBrowser(async (ctx) => {
     const out: Record<string, { label: string; loggedIn: boolean; verified: boolean }> = {};
     for (const p of Object.values(PLATFORMS)) {
@@ -58,7 +74,7 @@ async function status() {
       out[p.id] = { label: p.label, loggedIn: await p.isLoggedIn(page).catch(() => false), verified: p.verified ?? false };
     }
     return out;
-  });
+  }, "about:blank", profile);
 }
 
 async function openLogin(platformId: string) {
@@ -73,7 +89,7 @@ async function openLogin(platformId: string) {
   }, p.loginUrl);
 }
 
-function runJob(video: string, caption: string, platformIds: string[], live: boolean): Job {
+function runJob(video: string, caption: string, platformIds: string[], live: boolean, profile: Profile = defaultProfile): Job {
   const job: Job = { id: Date.now().toString(36), status: "running", log: [], results: {} };
   jobs.set(job.id, job);
   const log = (m: string) => job.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
@@ -87,7 +103,7 @@ function runJob(video: string, caption: string, platformIds: string[], live: boo
           if (!(await p.isLoggedIn(page))) throw new Error(`not logged in to ${p.label}. Click Connect first.`);
           await page.bringToFront();
           await p.post(page, { video, caption, dryRun: !live }, (m) => log(`  ${m}`));
-        });
+        }, "about:blank", profile);
         job.results[id] = live ? "posted" : "dry-run";
       } catch (e) {
         job.results[id] = `error: ${(e as Error).message.split("\n")[0]}`;
@@ -105,14 +121,14 @@ interface BatchRun { batch: Batch; log: string[]; done: boolean; }
 const batches = new Map<string, BatchRun>();
 let batchRunning = false; // one batch at a time, so spacing is never defeated by overlap
 
-function startBatch(videos: { path: string; caption?: string }[], platformIds: string[], live: boolean, spaceSec: number, sharedCaption: string): BatchRun {
+function startBatch(videos: { path: string; caption?: string }[], platformIds: string[], live: boolean, spaceSec: number, sharedCaption: string, profile: Profile = defaultProfile): BatchRun {
   const batch = buildBatch({ videos, platforms: platformIds, live, spaceSec, sharedCaption });
   const entry: BatchRun = { batch, log: [], done: false };
   batches.set(batch.id, entry);
   batchRunning = true;
   const log = (m: string) => entry.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
   (async () => {
-    try { await runBatchEngine(batch, log, (b) => { entry.batch = b; }); }
+    try { await runBatchEngine(batch, log, (b) => { entry.batch = b; }, profile); }
     catch (e) { log(`ERROR: ${(e as Error).message}`); }
     finally { entry.done = true; batchRunning = false; }
   })();
@@ -153,7 +169,47 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       return res.end(mobileHtml());
     }
-    if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, await status());
+    if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, await status(profileFor(req, url)));
+    // --- phone devices: each phone gets its own Chrome profile ---
+    if (req.method === "GET" && url.pathname === "/api/device") {
+      const d = deviceFor(req, url);
+      return d ? json(res, 200, { id: d.id, name: d.name }) : json(res, 404, { error: "unknown device" });
+    }
+    if (req.method === "POST" && url.pathname === "/api/device") {
+      const { name } = JSON.parse((await readBody(req)).toString() || "{}");
+      const d = createDevice(String(name ?? ""));
+      return json(res, 200, { id: d.id, name: d.name });
+    }
+    // --- sign in from the phone: stream the Mac's login page, replay taps/typing ---
+    if (req.method === "POST" && url.pathname === "/api/remote/open") {
+      const { platform } = JSON.parse((await readBody(req)).toString() || "{}");
+      const p = getPlatform(String(platform));
+      await openView(profileFor(req, url), p.loginUrl);
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === "GET" && url.pathname === "/api/remote/stream") {
+      const v = getView(profileFor(req, url));
+      if (!v) return json(res, 404, { error: "no sign-in window open" });
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+      const off = v.subscribe((ev) => {
+        if (ev.type === "frame") res.write(`data: ${ev.data}\n\n`);
+        else res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`);
+        if (ev.type === "closed") res.end();
+      });
+      const ping = setInterval(() => res.write(": ping\n\n"), 15_000);
+      req.on("close", () => { off(); clearInterval(ping); });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/remote/input") {
+      const v = getView(profileFor(req, url));
+      if (!v) return json(res, 404, { error: "no sign-in window open" });
+      await v.input(JSON.parse((await readBody(req)).toString() || "{}"));
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === "POST" && url.pathname === "/api/remote/close") {
+      closeView(profileFor(req, url));
+      return json(res, 200, { ok: true });
+    }
     if (req.method === "POST" && url.pathname === "/api/login") {
       const { platform } = JSON.parse((await readBody(req)).toString() || "{}");
       await openLogin(platform);
@@ -169,7 +225,7 @@ const server = createServer(async (req, res) => {
       mkdirSync(UPLOADS, { recursive: true });
       const dest = join(UPLOADS, `${Date.now()}${extname(file.name) || ".mp4"}`);
       writeFileSync(dest, Buffer.from(await file.arrayBuffer()));
-      const job = runJob(dest, String(form.get("caption") ?? ""), platformIds, form.get("live") === "on");
+      const job = runJob(dest, String(form.get("caption") ?? ""), platformIds, form.get("live") === "on", profileFor(req, url));
       return json(res, 200, { id: job.id });
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/jobs/")) {
@@ -196,7 +252,7 @@ const server = createServer(async (req, res) => {
         videos.push({ path: dest, caption: per || undefined });
       }
       if (!videos.length) return json(res, 400, { error: "pick at least one video" });
-      const entry = startBatch(videos, platformIds, form.get("live") === "on", Number(form.get("space")) || 60, String(form.get("caption") ?? ""));
+      const entry = startBatch(videos, platformIds, form.get("live") === "on", Number(form.get("space")) || 60, String(form.get("caption") ?? ""), profileFor(req, url));
       return json(res, 200, { id: entry.batch.id });
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/batches/")) {

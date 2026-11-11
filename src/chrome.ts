@@ -3,7 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { platform, homedir } from "node:os";
 import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
-import { CDP_PORT, PROFILE_DIR, ensureDirs } from "./config.ts";
+import { defaultProfile, ensureDirs, type Profile } from "./config.ts";
 import { sleep } from "./sleep.ts";
 
 function chromeCandidates(): string[] {
@@ -65,8 +65,9 @@ async function cdpAlive(port: number): Promise<boolean> {
 /** Launch the user's real Chrome on OUR profile folder with a local debugging port.
  *  Same approach RnR uses: the person logs in inside this window, the profile keeps
  *  the session, we never see or store credentials. Reuses an already-running instance. */
-export async function launchChrome(startUrl: string, port = CDP_PORT): Promise<void> {
-  ensureDirs();
+export async function launchChrome(startUrl: string, profile: Profile = defaultProfile): Promise<void> {
+  const { dir, port } = profile;
+  ensureDirs(dir);
   if (await cdpAlive(port)) return;
   const bin = findChrome();
   const child = spawn(
@@ -75,7 +76,7 @@ export async function launchChrome(startUrl: string, port = CDP_PORT): Promise<v
       `--remote-debugging-port=${port}`,
       "--remote-debugging-address=127.0.0.1",
       "--remote-allow-origins=*",
-      `--user-data-dir=${PROFILE_DIR}`,
+      `--user-data-dir=${dir}`,
       "--no-first-run",
       "--no-default-browser-check",
       "--start-maximized",
@@ -93,7 +94,8 @@ export async function launchChrome(startUrl: string, port = CDP_PORT): Promise<v
 }
 
 /** Kill only the Chrome running on OUR profile folder, never the user's normal Chrome. */
-export function killToolChrome(): void {
+export function killToolChrome(profile: Profile = defaultProfile): void {
+  const PROFILE_DIR = profile.dir;
   try {
     if (platform() === "win32") {
       // Match our profile dir in the command line via WMIC, then kill by PID.
@@ -114,7 +116,8 @@ export interface Attached {
 }
 
 /** Attach Playwright to the running Chrome over CDP and return the first tab. */
-export async function attach(port = CDP_PORT, startUrl = "about:blank"): Promise<Attached> {
+export async function attach(profile: Profile = defaultProfile, startUrl = "about:blank"): Promise<Attached> {
+  const { port } = profile;
   let browser: Browser;
   try {
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
@@ -122,9 +125,9 @@ export async function attach(port = CDP_PORT, startUrl = "about:blank"): Promise
     // A Chrome left over from an earlier attach can refuse context management.
     // Same fix RnR's _repair_window uses: close ONLY our profile's Chrome and relaunch.
     if (!String((e as Error).message).includes("Browser context management")) throw e;
-    killToolChrome();
+    killToolChrome(profile);
     await sleep(1500);
-    await launchChrome(startUrl, port);
+    await launchChrome(startUrl, profile);
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   }
   const context = browser.contexts()[0] ?? (await browser.newContext());

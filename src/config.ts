@@ -24,6 +24,11 @@ export const PROFILE_DIR = join(APP_DIR, "chrome-profile");
 export const HISTORY_DB = join(APP_DIR, "history.db");
 export const CDP_PORT = Number(process.env.POSTER_CDP_PORT ?? 9226);
 
-export function ensureDirs(): void {
-  mkdirSync(PROFILE_DIR, { recursive: true });
+/** A Chrome profile folder plus the debugging port its Chrome listens on.
+ *  The default one is the tool's own; each phone device gets its own (see devices.ts). */
+export interface Profile { dir: string; port: number; }
+export const defaultProfile: Profile = { dir: PROFILE_DIR, port: CDP_PORT };
+
+export function ensureDirs(dir: string = PROFILE_DIR): void {
+  mkdirSync(dir, { recursive: true });
 }
