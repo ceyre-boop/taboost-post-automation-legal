@@ -35,7 +35,7 @@ export async function stageImage(imageUrl: string, jobId: string): Promise<strin
 }
 
 /** Render a Remotion composition with the given props to outPath (abs .mp4). */
-function render(composition: string, props: unknown, outPath: string): void {
+export function render(composition: string, props: unknown, outPath: string): void {
   const propsFile = join(mkdtempSync(join(tmpdir(), "taboost-render-")), "props.json");
   writeFileSync(propsFile, JSON.stringify(props));
   const r = spawnSync(

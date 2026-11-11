@@ -52,7 +52,7 @@ export const RemotionRoot: React.FC = () => (
       defaultProps={defaultCreatorTipProps}
       // length follows the number of lessons in the props
       calculateMetadata={({ props }: { props: CreatorTipProps }) => ({
-        durationInFrames: creatorTipDuration(props.tips),
+        durationInFrames: creatorTipDuration(props.tips, props.frames),
       })}
     />
     <Composition

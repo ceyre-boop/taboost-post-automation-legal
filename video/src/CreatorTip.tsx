@@ -20,7 +20,11 @@ export const HOOK_FRAMES = 78; // ~2.6s
 export const PER_TIP_FRAMES = 96; // ~3.2s each — enough to read a title + line
 export const CTA_FRAMES = 108; // ~3.6s
 
-export type Tip = { title: string; body: string };
+export type Tip = { title: string; body: string; /** optional photo in public/ shown on the card */ image?: string };
+/** Optional per-section lengths (frames) so cards follow a voiceover. */
+export type Frames = { hook: number; tips: number[]; cta: number };
+/** Optional burned-in captions, in frames from the start of the video. */
+export type Caption = { from: number; to: number; text: string };
 
 export type CreatorTipProps = {
   /** who/where the lesson comes from, e.g. "Ugo Lord · TikTok Creator Academy" */
@@ -33,11 +37,29 @@ export type CreatorTipProps = {
   ctaSub: string;
   /** optional voiceover in public/, e.g. "voice-20261015.mp3"; empty = silent */
   voiceFile: string;
+  frames?: Frames;
+  /** optional replacement for the "What I learned from …" line on the hook card */
+  kicker?: string;
+  captions?: Caption[];
 };
 
 /** Total length is driven by how many tips the lesson has. */
-export const creatorTipDuration = (tips: Tip[]): number =>
-  HOOK_FRAMES + Math.max(tips.length, 1) * PER_TIP_FRAMES + CTA_FRAMES;
+export const creatorTipDuration = (tips: Tip[], frames?: Frames): number =>
+  frames
+    ? frames.hook + frames.tips.reduce((a, b) => a + b, 0) + frames.cta
+    : HOOK_FRAMES + Math.max(tips.length, 1) * PER_TIP_FRAMES + CTA_FRAMES;
+
+const Captions: React.FC<{ captions: Caption[] }> = ({ captions }) => {
+  const frame = useCurrentFrame();
+  const c = captions.find((x) => frame >= x.from && frame < x.to);
+  if (!c) return null;
+  return (
+    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: 260, pointerEvents: "none" }}>
+      <div style={{ fontFamily, fontWeight: 800, fontSize: 58, lineHeight: 1.15, color: BRAND.paper, background: "rgba(0,0,0,0.72)",
+        padding: "14px 30px", borderRadius: 18, maxWidth: 920, textAlign: "center" }}>{c.text}</div>
+    </AbsoluteFill>
+  );
+};
 
 const fadeUp = (frame: number, start: number, dur = 16) => {
   const o = interpolate(frame, [start, start + dur], [0, 1], {
@@ -82,7 +104,7 @@ const Dots: React.FC<{ count: number; active: number; dark?: boolean }> = ({ cou
 );
 
 // ---- Scene 1: Hook ----------------------------------------------------------
-const Hook: React.FC<{ source: string; hook: string }> = ({ source, hook }) => {
+const Hook: React.FC<{ source: string; hook: string; kicker?: string }> = ({ source, hook, kicker }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const pop = spring({ frame, fps, config: { damping: 14, mass: 0.7 } });
@@ -110,7 +132,7 @@ const Hook: React.FC<{ source: string; hook: string }> = ({ source, hook }) => {
           textTransform: "uppercase",
         }}
       >
-        What I learned from {source}
+        {kicker ?? `What I learned from ${source}`}
       </div>
       <div
         style={{
@@ -183,6 +205,9 @@ const TipCard: React.FC<{ tip: Tip; index: number; total: number }> = ({ tip, in
       >
         {tip.body}
       </div>
+      {tip.image ? (
+        <Img src={staticFile(tip.image)} style={{ ...fadeUp(frame, 30), maxHeight: 620, maxWidth: 880, objectFit: "contain", borderRadius: 28, alignSelf: "center" }} />
+      ) : null}
       <Dots count={total} active={index} dark={dark} />
     </AbsoluteFill>
   );
@@ -239,24 +264,26 @@ const Cta: React.FC<{ cta: string; ctaSub: string }> = ({ cta, ctaSub }) => {
 
 export const CreatorTip: React.FC<CreatorTipProps> = (props) => {
   const tips = props.tips.length ? props.tips : [{ title: "No tips", body: "" }];
+  const hookF = props.frames?.hook ?? HOOK_FRAMES;
+  const tipF = tips.map((_, i) => props.frames?.tips[i] ?? PER_TIP_FRAMES);
+  const tipStart = tipF.map((_, i) => hookF + tipF.slice(0, i).reduce((a, b) => a + b, 0));
+  const ctaStart = hookF + tipF.reduce((a, b) => a + b, 0);
+  const ctaF = props.frames?.cta ?? CTA_FRAMES;
   return (
     <AbsoluteFill style={{ background: BRAND.ink }}>
       {props.voiceFile ? <Audio src={staticFile(props.voiceFile)} /> : null}
-      <Sequence durationInFrames={HOOK_FRAMES + 2}>
-        <Hook source={props.source} hook={props.hook} />
+      <Sequence durationInFrames={hookF + 2}>
+        <Hook source={props.source} hook={props.hook} kicker={props.kicker} />
       </Sequence>
       {tips.map((tip, i) => (
-        <Sequence
-          key={i}
-          from={HOOK_FRAMES + i * PER_TIP_FRAMES}
-          durationInFrames={PER_TIP_FRAMES + 2}
-        >
+        <Sequence key={i} from={tipStart[i]} durationInFrames={tipF[i] + 2}>
           <TipCard tip={tip} index={i} total={tips.length} />
         </Sequence>
       ))}
-      <Sequence from={HOOK_FRAMES + tips.length * PER_TIP_FRAMES} durationInFrames={CTA_FRAMES}>
+      <Sequence from={ctaStart} durationInFrames={ctaF}>
         <Cta cta={props.cta} ctaSub={props.ctaSub} />
       </Sequence>
+      {props.captions?.length ? <Captions captions={props.captions} /> : null}
     </AbsoluteFill>
   );
 };

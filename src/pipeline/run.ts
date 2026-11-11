@@ -12,6 +12,53 @@ import { extractFacts, type Fact } from "./facts.ts";
 import { makeIdeas, type IdeasFile } from "./ideas.ts";
 import { writeScript, type Script } from "./script.ts";
 import { latestRun, newRunId, readJson, runDir, writeJson } from "./store.ts";
+import { makeScenes } from "./scenes.ts";
+import { toCreatorTipProps } from "./scenes.ts";
+import { speakLines, VOICE } from "./voice.ts";
+import { render, stageImage, VIDEO_PUBLIC } from "../weekly/render.ts";
+import { loadProducts } from "../weekly/catalog.ts";
+import { copyFileSync, mkdirSync } from "node:fs";
+
+const FPS = 30; // video/src/brand.ts
+
+/** Stage 4: scene data (Claude) → voice → adapter → existing CreatorTip render. */
+async function renderStage(business: string, run: string): Promise<string> {
+  const brief = loadBrief(business);
+  const dir = runDir(business, run);
+  const script = readJson<Script>(join(dir, "script.json"));
+  if (!script.checks.ok) throw new Error("script.json failed its checks; fix or re-run the script stage first");
+  const fact = readJson<Fact[]>(join(dir, "facts.json")).find((f) => f.id === script.idea.factId)!;
+
+  // Visual: the official product photo when the fact is a product row.
+  let photo = "";
+  const pid = fact.id.startsWith("tap-products.csv#") ? fact.id.split("#")[1] : "";
+  if (pid) {
+    const prod = loadProducts().find((p) => p.id === pid);
+    if (prod?.imageUrl) photo = await stageImage(prod.imageUrl, run);
+  }
+
+  console.log(`[render] storyboarding scenes${photo ? " (with product photo)" : ""}…`);
+  const sc = await makeScenes(brief, script, fact, !!photo);
+  writeJson(join(dir, "scenes.json"), sc);
+  if (!sc.checks.ok) throw new Error(`scene data failed checks:\n- ${sc.checks.problems.join("\n- ")}`);
+
+  console.log(`[render] voice (${VOICE}) for ${sc.scenes.length} scenes…`);
+  const wav = join(dir, "voice.wav");
+  const timing = speakLines(sc.scenes.map((s) => s.line), wav);
+  mkdirSync(VIDEO_PUBLIC, { recursive: true });
+  const voiceFile = `voice-${run}.wav`;
+  copyFileSync(wav, join(VIDEO_PUBLIC, voiceFile));
+
+  const props = toCreatorTipProps(sc.scenes, timing, FPS, {
+    source: brief.business.toUpperCase(), ctaSub: brief.call_to_action, voiceFile, photo,
+    kicker: pid ? "TikTok Shop sales data" : fact.subject,
+  });
+  writeJson(join(dir, "render-props.json"), props);
+  const out = join(dir, "video.mp4");
+  console.log(`[render] rendering ${(timing.at(-1)!.start + timing.at(-1)!.dur).toFixed(1)}s of voice → ${out}`);
+  render("CreatorTip", props, out);
+  return out;
+}
 
 const arg = (n: string) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1] : undefined; };
 
@@ -73,6 +120,7 @@ async function main(): Promise<void> {
   const business = arg("brief") ?? "taboost";
   const idea = Number(arg("idea") ?? 0);
   if (cmd === "ideas") { await ideasStage(business); return; }
+  if (cmd === "render") { console.log(await renderStage(business, arg("run") ?? latestRun(business))); return; }
   if (cmd === "script" || cmd === "step1") {
     const run = cmd === "step1" ? await ideasStage(business) : (arg("run") ?? latestRun(business));
     const s = await scriptStage(business, run, idea);
@@ -81,7 +129,7 @@ async function main(): Promise<void> {
     if (!s.checks.ok) process.exitCode = 2;
     return;
   }
-  console.log("usage: node src/pipeline/run.ts <ideas|script|step1> --brief <business> [--run ID] [--idea N]");
+  console.log("usage: node src/pipeline/run.ts <ideas|script|step1|render> --brief <business> [--run ID] [--idea N]");
   process.exitCode = 1;
 }
 
