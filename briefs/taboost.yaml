@@ -1,0 +1,40 @@
+business: taboost
+audience: >
+  TikTok Shop creators and would-be creators, mostly 18-34, who want to earn from
+  affiliate sales and LIVE but don't have an agency behind them.
+promise: >
+  One real, specific number from what's selling or how TikTok works, so a creator
+  knows what to do next.
+tone: >
+  Direct, friendly, plain words. Confident but never hype. Talks to one creator.
+banned_claims:
+  - guaranteed
+  - get rich
+  - passive income
+  - overnight
+  - easy money
+  - financial freedom
+  - make $
+  - you will earn
+  - risk-free
+  - official TikTok partner
+call_to_action: "Join TABOOST, link in bio"
+platforms: [tiktok, instagram, youtube]
+script:
+  seconds: 20
+  words_per_second: 2.5
+  hook_max_words: 6
+ai_label:
+  default: true
+  tiktok: true
+  instagram: true
+  youtube: true
+sources:
+  - path: ~/TABOOST-Shop/data/shop/tap-products.csv
+    kind: csv
+    id_column: Product ID
+    title_column: Product Name
+    fact_columns: [Shop Name, Category, Sale Price, Items Sold, Total Commission Rate]
+    max_rows: 60             # top of the file is the current best sellers
+  - path: video/lessons.json
+    kind: json-lessons

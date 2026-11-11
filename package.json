@@ -17,7 +17,8 @@
     "remote": "node src/remote.ts"
   },
   "dependencies": {
-    "playwright-core": "^1.52.0"
+    "playwright-core": "^1.52.0",
+    "yaml": "2.6.1"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

@@ -1,0 +1,24 @@
+# Channel brief — one per business. Copy to briefs/<business>.yaml and fill in.
+business: example            # short id, used in file and folder names
+audience: >
+  Who watches. One or two sentences.
+promise: >
+  The one thing every video delivers to that audience.
+tone: >
+  How it sounds. A few words.
+banned_claims:               # phrases/claims that must never appear (case-insensitive)
+  - guaranteed income
+call_to_action: "Link in bio"
+platforms: [tiktok, instagram, youtube]   # one script variant is written per platform
+script:
+  seconds: 20                # target video length
+  words_per_second: 2.5      # spoken pace used to turn seconds into a word budget
+  hook_max_words: 6          # a ~2-second hook
+ai_label:                    # stage 6: per-platform "AI-generated" label, default ON
+  default: true
+sources:                     # the ONLY material ideas and numbers may come from
+  - path: ~/path/to/file.csv
+    kind: csv                # csv | text | json-lessons
+    id_column: ID            # csv: a stable row id
+    title_column: Name       # csv: what the row is about
+    fact_columns: [Price]    # csv: columns whose values are usable facts
