@@ -67,6 +67,9 @@ class RemoteView {
     await this.send("Emulation.setDeviceMetricsOverride", { width: VIEW_W, height: VIEW_H, deviceScaleFactor: 2, mobile: true }, sessionId);
     await this.send("Emulation.setUserAgentOverride", { userAgent: MOBILE_UA, platform: "iPhone" }, sessionId);
     await this.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 }, sessionId).catch(() => {});
+    // A background tab never paints, so the screencast sends no frames and the phone shows nothing. Bring it to the front.
+    await this.send("Target.activateTarget", { targetId }).catch(() => {});
+    await this.send("Page.bringToFront", {}, sessionId).catch(() => {});
     await this.startCast();
   }
 
@@ -104,7 +107,12 @@ class RemoteView {
         const wasTop = i === this.stack.length - 1;
         this.stack.splice(i, 1);
         if (!this.stack.length) { this.close(); break; }
-        if (wasTop) this.startCast().catch(() => {}); // popup closed → back to the login page
+        if (wasTop) { // popup closed → back to the login page
+          const back = this.top!;
+          this.send("Target.activateTarget", { targetId: back.targetId }).catch(() => {});
+          this.send("Page.bringToFront", {}, back.sessionId).catch(() => {});
+          this.startCast().catch(() => {});
+        }
         break;
       }
     }
