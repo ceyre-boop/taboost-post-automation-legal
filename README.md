@@ -9,10 +9,8 @@ It was called TABOOST Poster until 2026-11-18. The repo keeps its old name so th
 | Platform | State |
 |---|---|
 | TikTok | Posts for real (12 live posts) |
-| Instagram | Reaches the Share screen in rehearsal; not yet posted for real |
-| Facebook, X | One clean rehearsal each |
-| YouTube, Pinterest | Last rehearsal failed (2026-10-27); adapter needs fixing |
-| LinkedIn, Threads | Never run |
+| Instagram, YouTube, X, Facebook, LinkedIn, Threads | Rehearse cleanly to the Post button, video and caption seen on screen (2026-11-18). Not yet posted for real |
+| Pinterest | Uploads, then needs a board on the account; untested past that |
 
 A rehearsal ("dry run") fills in everything and stops before the Post button. A platform is only marked `verified` in `src/platforms/` after it has posted for real.
 

@@ -34,15 +34,26 @@ export const facebook: Platform = {
     log("Video handed to the uploader, waiting for processing...");
 
     if (input.caption) {
-      const box = page.locator('[role="dialog"] [contenteditable="true"][role="textbox"], [role="dialog"] [contenteditable="true"]').first();
+      // Facebook keeps an older copy of the post box behind the one on screen: the last one is the live one.
+      const box = page.locator('[role="dialog"] [contenteditable="true"][role="textbox"]').last();
       await box.waitFor({ state: "visible", timeout: 30_000 });
-      await box.click();
+      // Facebook lays its placeholder over the text box, so an ordinary click is intercepted.
+      await box.click({ force: true });
       await page.keyboard.type(input.caption, { delay: 8 });
+      // Typing can land nowhere without an error, so read the box back before saying so.
+      const first = input.caption.split("\n")[0].slice(0, 20);
+      if (!(await box.innerText().catch(() => "")).includes(first)) {
+        await box.evaluate((el) => (el as HTMLElement).focus());
+        await page.keyboard.type(input.caption, { delay: 8 });
+      }
+      if (!(await box.innerText().catch(() => "")).includes(first)) throw new Error("Facebook's text box did not take the caption.");
       log("Text typed.");
     }
 
-    const postBtn = page.locator('[role="dialog"] [aria-label="Post"][role="button"], [role="dialog"] div[role="button"]:has-text("Post")').first();
+    const postBtn = page.locator('[role="dialog"] [aria-label="Post"][role="button"]').last();
     await postBtn.waitFor({ state: "visible", timeout: 180_000 });
+    // Post is greyed out until Facebook has taken the video.
+    for (let i = 0; i < 150 && (await postBtn.getAttribute("aria-disabled")) === "true"; i++) await page.waitForTimeout(2000);
 
     if (input.dryRun) {
       log("DRY RUN: post is composed with the video attached. Not clicking Post.");

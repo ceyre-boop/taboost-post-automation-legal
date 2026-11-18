@@ -7,7 +7,7 @@ export const youtube: Platform = {
   label: "YouTube",
   loginUrl: "https://studio.youtube.com/",
   host: /youtube\.com/,
-  verified: false, // adapter written; verify with a dry run once logged in
+  verified: false, // rehearses cleanly (2026-11-18); not yet posted for real
 
   async isLoggedIn(page: Page): Promise<boolean> {
     const cookies = await page.context().cookies("https://www.youtube.com");
@@ -19,8 +19,14 @@ export const youtube: Platform = {
     await page.goto("https://studio.youtube.com/", { waitUntil: "domcontentloaded" });
     if (page.url().includes("accounts.google.com")) throw new Error("YouTube asked for Google login. Log in in the Chrome window, then run again.");
 
-    await page.locator("#create-icon, ytcp-button#create-icon").first().click({ timeout: 60_000 });
-    await page.locator('tp-yt-paper-item:has-text("Upload videos"), #text-item-0').first().click({ timeout: 15_000 });
+    // The dashboard has its own "Upload videos" button; the Create menu is the fallback.
+    const direct = page.locator('ytcp-icon-button#upload-icon, button[aria-label="Upload videos"]').first();
+    if (await direct.isVisible({ timeout: 15_000 }).catch(() => false)) {
+      await direct.click();
+    } else {
+      await page.locator('button[aria-label="Create"], #create-icon').first().click({ timeout: 30_000 });
+      await page.locator('tp-yt-paper-item:has-text("Upload video"), [role="menuitem"]:has-text("Upload video")').first().click({ timeout: 15_000 });
+    }
     const fileInput = page.locator('input[type="file"]').first();
     await fileInput.waitFor({ state: "attached", timeout: 30_000 });
     await fileInput.setInputFiles(input.video);

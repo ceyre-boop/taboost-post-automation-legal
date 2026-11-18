@@ -37,15 +37,20 @@ export const pinterest: Platform = {
     }
     log("Title/description filled.");
 
-    // Board: default to the first board the picker offers.
-    const boardPicker = page.locator('[data-test-id="board-dropdown-select-button"], button:has-text("Choose a board")').first();
-    if (await boardPicker.isVisible({ timeout: 4000 }).catch(() => false)) {
+    // Board: Pinterest will not publish without one. Use the first the picker offers.
+    const boardPicker = page.locator('[data-test-id="board-dropdown-select-button"]').first();
+    await boardPicker.waitFor({ state: "visible", timeout: 60_000 });
+    if (/choose a board/i.test(await boardPicker.innerText())) {
       await boardPicker.click();
-      const firstBoard = page.locator('[role="listbox"] [role="option"], [data-test-id="board-row"]').first();
-      await firstBoard.click().catch(() => {});
+      const firstBoard = page.locator('[data-test-id="board-row"], [data-test-id^="board-row"], [role="listbox"] [role="option"]').first();
+      if (!(await firstBoard.isVisible({ timeout: 6000 }).catch(() => false))) {
+        await page.keyboard.press("Escape").catch(() => {});
+        throw new Error("Pinterest has no board to pin to. Make one board on Pinterest, then run again.");
+      }
+      await firstBoard.click();
     }
 
-    const publishBtn = page.locator('[data-test-id="board-dropdown-save-button"], button:text-is("Publish"), button:text-is("Save")').first();
+    const publishBtn = page.getByRole("button", { name: "Publish", exact: true }).first();
     await publishBtn.waitFor({ state: "visible", timeout: 180_000 });
 
     if (input.dryRun) {

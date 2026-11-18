@@ -24,7 +24,7 @@ export const threads: Platform = {
     if (page.url().includes("/login")) throw new Error("Threads asked for login (via Instagram). Log in in the Chrome window, then run again.");
 
     // Open the composer.
-    const opener = page.locator('[role="button"]:has-text("Start a thread"), [aria-label="Create"], svg[aria-label="Create"]').first();
+    const opener = page.locator('[role="button"][aria-label*="compose a new post"], [role="button"]:has-text("Start a thread"), [aria-label="Create"], svg[aria-label="Create"]').first();
     await opener.waitFor({ state: "visible", timeout: 30_000 });
     await opener.click();
 
@@ -42,7 +42,7 @@ export const threads: Platform = {
       log("Text typed.");
     }
 
-    const postBtn = page.locator('[role="dialog"] [role="button"]:text-is("Post"), div[role="button"]:text-is("Post")').first();
+    const postBtn = page.locator('[role="dialog"]').getByRole("button", { name: "Post", exact: true }).last();
     await postBtn.waitFor({ state: "visible", timeout: 180_000 });
 
     if (input.dryRun) {
