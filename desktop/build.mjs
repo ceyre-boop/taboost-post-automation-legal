@@ -19,7 +19,7 @@ await build({
   external: ["electron", "playwright-core"],
   // Some bundled deps use require(); give ESM output a working require shim.
   banner: {
-    js: "import { createRequire as __taboostCreateRequire } from 'module'; const require = __taboostCreateRequire(import.meta.url);",
+    js: "import { createRequire as __posterCreateRequire } from 'module'; const require = __posterCreateRequire(import.meta.url);",
   },
   logLevel: "info",
 });

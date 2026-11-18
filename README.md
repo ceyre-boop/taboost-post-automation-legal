@@ -1,6 +1,24 @@
-# TABOOST Poster
+# Northbound Poster
 
-Posts to social platforms from the user's **own** logged-in browser. No API keys, no app review, no passwords or tokens ever touch this code.
+Northbound Studio's first automation: add one video, and it goes to every platform you use. It posts from the user's **own** logged-in browser. No API keys, no app review, no passwords or tokens ever touch this code.
+
+It was called TABOOST Poster until 2026-11-18. The repo keeps its old name so the published legal pages and download links keep working.
+
+## Where it stands (2026-11-18)
+
+| Platform | State |
+|---|---|
+| TikTok | Posts for real (12 live posts) |
+| Instagram | Reaches the Share screen in rehearsal; not yet posted for real |
+| Facebook, X | One clean rehearsal each |
+| YouTube, Pinterest | Last rehearsal failed (2026-10-27); adapter needs fixing |
+| LinkedIn, Threads | Never run |
+
+A rehearsal ("dry run") fills in everything and stops before the Post button. A platform is only marked `verified` in `src/platforms/` after it has posted for real.
+
+## A second set of accounts
+
+`POSTER_ACCOUNT=northbound bun run dashboard` keeps a separate set of signed-in accounts with its own browser, so a business account never mixes with a personal one. Use the same variable with `login`, `status` and `post`.
 
 ## How it works (the RnR mechanism)
 
@@ -36,13 +54,15 @@ node src/cli.ts batch:resume <id>                                             # 
 - No `--platform` = every platform you're logged into. Dry run unless `--live`.
 - **Per-clip caption:** put `myclip.txt` next to `myclip.mp4`; otherwise `--caption` applies to all.
 - Live posts are **spaced** (`--space` seconds, jittered) so the account doesn't look like a spam cannon.
-- Batches are **resumable** — state lives in `~/Library/Application Support/TaboostPoster/batches/`.
+- Batches are **resumable** — state lives in the data folder under `batches/`.
 - **Dashboard** (`bun run dashboard`, http://127.0.0.1:4747): select many clips, pick platforms once, hit **Post all**, watch the clip×platform progress grid.
 - Engine: `src/batch.ts` (orchestrates the per-platform adapters; one Chrome attach at a time).
 
-Data lives in `~/Library/Application Support/TaboostPoster/` (Chrome profile + `history.db`). Delete the folder to log out everywhere.
+Data lives in `~/Library/Application Support/NorthboundPoster/` (Chrome profile + `history.db`). A machine that used the tool before the rename keeps `TaboostPoster/`. Delete the folder to log out everywhere.
 
-## Weekly product video (auto-generate + post)
+## Weekly product video (TABOOST's own content, not part of the product)
+
+This and `src/pipeline/` are what Colin uses to make videos for TABOOST's own accounts. They are not sold with Northbound Poster and keep the TABOOST name.
 
 Makes one official TABOOST product video a week from real catalog data, then waits for
 your OK before it posts. Nothing publishes unattended.

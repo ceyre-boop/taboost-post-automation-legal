@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>TABOOST Poster — post everywhere from your own logins</title>
+<title>Northbound Poster: one video, every platform</title>
 <meta name="description" content="Auto-make a branded product video every week and post it to every platform from your own logins. No API keys. No passwords. Ever." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 <style>
   :root{
-    --teal:#009999; --teal-dark:#00706F; --teal-deep:#004C4C;
-    --ink:#0E1414; --ink-soft:#33403f; --paper:#ffffff;
+    --teal:#3d6df2; --teal-dark:#2a4fc0; --teal-deep:#162a6b;
+    --ink:#0a0e1a; --ink-soft:#33403f; --paper:#ffffff;
     --pop:#FFC247; --pop-ink:#3A2A00;
     --line:#e4eaea; --bg-soft:#f4f8f8;
     --radius:18px; --maxw:1080px;
@@ -28,11 +28,11 @@
   .wmark{filter:brightness(0) invert(1)}
   .btn{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:16px;padding:13px 22px;border-radius:999px;border:0;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease}
   .btn:active{transform:translateY(1px)}
-  .btn-primary{background:var(--teal);color:#fff;box-shadow:0 8px 24px rgba(0,153,153,.28)}
+  .btn-primary{background:var(--teal);color:#fff;box-shadow:0 8px 24px rgba(61,109,242,.28)}
   .btn-primary:hover{background:var(--teal-dark)}
   .btn-pop{background:var(--pop);color:var(--pop-ink);box-shadow:0 8px 24px rgba(255,194,71,.32)}
   .btn-ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
-  .pill{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13px;padding:6px 14px;border-radius:999px;background:rgba(0,153,153,.1);color:var(--teal-dark)}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13px;padding:6px 14px;border-radius:999px;background:rgba(61,109,242,.1);color:var(--teal-dark)}
 
   /* nav */
   nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
@@ -42,7 +42,7 @@
   @media(max-width:720px){nav .links{display:none}}
 
   /* hero */
-  .hero{padding:72px 0 40px;background:radial-gradient(1200px 500px at 70% -10%,rgba(0,153,153,.12),transparent 60%)}
+  .hero{padding:72px 0 40px;background:radial-gradient(1200px 500px at 70% -10%,rgba(61,109,242,.12),transparent 60%)}
   .hero h1{font-size:clamp(38px,6vw,68px);line-height:1.02;letter-spacing:-2.5px;font-weight:900;margin:18px 0 0}
   .hero h1 .hl{color:var(--teal)}
   .hero p.sub{font-size:clamp(17px,2.2vw,21px);color:var(--ink-soft);max-width:620px;margin:22px 0 30px;font-weight:500}
@@ -89,7 +89,7 @@
   .plat{border:1px solid var(--line);border-radius:14px;padding:18px;background:#fff;text-align:center}
   .plat .nm{font-weight:800;letter-spacing:-.3px}
   .plat .st{font-size:12.5px;font-weight:700;margin-top:6px;display:inline-block;padding:3px 10px;border-radius:999px}
-  .live{background:rgba(0,153,153,.12);color:var(--teal-dark)}
+  .live{background:rgba(61,109,242,.12);color:var(--teal-dark)}
   .soon{background:#f0f0f0;color:#888}
 
   /* app shell preview */
@@ -126,10 +126,9 @@
 <body>
 
 <nav><div class="wrap">
-  <div class="logo"><img src="taboost-mark.png" class="mark" alt="TABOOST"/>TABOOST</div>
+  <div class="logo"><img src="northbound-mark.svg" class="mark" alt=""/>Northbound</div>
   <div class="links">
     <a href="#how">How it works</a>
-    <a href="#video">Weekly video</a>
     <a href="#platforms">Platforms</a>
     <a href="#pricing">Pricing</a>
     <a href="/app">Log in</a>
@@ -138,87 +137,66 @@
 </div></nav>
 
 <header class="hero"><div class="wrap">
-  <span class="pill">● No API keys · No passwords · Ever</span>
-  <h1>Post to <span class="hl">every platform</span><br/>from your own logins.</h1>
-  <p class="sub">TABOOST Poster makes a branded product video every week and posts it for you — from a browser you log into yourself. We never see or store a password, token, or account.</p>
+  <span class="pill">● Set up in about five minutes</span>
+  <h1>One video.<br/><span class="hl">Every platform.</span></h1>
+  <p class="sub">Add a video once and Northbound Poster puts it on TikTok, Instagram, YouTube and the rest for you. It works through a browser you sign in to yourself, so we never see a password.</p>
   <div class="cta-row">
     <a href="/app" class="btn btn-primary">Get early access →</a>
     <a href="#how" class="btn btn-ghost">See how it works</a>
   </div>
   <div class="trust">
-    <span><span class="check">✓</span> You own every login</span>
-    <span><span class="check">✓</span> Runs on your machine</span>
-    <span><span class="check">✓</span> One video a week, 0 effort</span>
+    <span><span class="check">✓</span> Your logins stay on your computer</span>
+    <span><span class="check">✓</span> Nothing to connect or approve</span>
+    <span><span class="check">✓</span> Post from your phone</span>
   </div>
 </div></header>
 
 <section class="band soft" id="how"><div class="wrap">
   <span class="eyebrow">How it works</span>
-  <h2 class="sec">Three steps. Then it runs itself.</h2>
-  <p class="lede">The trick that keeps it legal and un-bannable: it drives <b>your own browser</b>. You log into each platform once — like a human — and it posts from there.</p>
+  <h2 class="sec">Three steps. About five minutes.</h2>
+  <p class="lede">Posting the same video in five apps means uploading it five times and typing the caption five times. Do it once here.</p>
   <div class="steps">
-    <div class="step"><div class="n">1</div><h3>Install &amp; unlock</h3><p>Download the app, drop in your license key. Nothing to configure, no developer accounts.</p></div>
-    <div class="step"><div class="n">2</div><h3>Log in once, yourself</h3><p>A real browser window opens. You sign into TikTok, Instagram, YouTube — whatever you want — just like normal. Your session stays on your machine.</p></div>
-    <div class="step"><div class="n">3</div><h3>It posts for you</h3><p>Every week it builds a product video, you tap approve, and it publishes to every connected platform. No keys, no passwords ever leave your computer.</p></div>
+    <div class="step"><div class="n">1</div><h3>Install it</h3><p>Download the app and paste in your key. There is nothing else to set up.</p></div>
+    <div class="step"><div class="n">2</div><h3>Sign in to your accounts</h3><p>A browser window opens. Sign in to each platform the way you always do. You only do this once.</p></div>
+    <div class="step"><div class="n">3</div><h3>Add a video and press Post</h3><p>Pick the video, write the caption, tick the platforms. It uploads to each one while you do something else.</p></div>
   </div>
 </div></section>
 
-<section class="band" id="video"><div class="wrap">
-  <div class="feat">
-    <div>
-      <span class="eyebrow">The weekly video</span>
-      <h2 class="sec">A clear product video, made for you every week.</h2>
-      <p class="lede" style="margin-bottom:0">Real product, real numbers, your brand — rendered automatically. You just approve it.</p>
-      <ul>
-        <li><span class="check">✓</span><span><b>Real data, not fluff.</b> Pulls a top-selling product with its official photo, units sold, and commission.</span></li>
-        <li><span class="check">✓</span><span><b>On-brand, every time.</b> Your colors, your logo, your call to action — rendered as motion graphics.</span></li>
-        <li><span class="check">✓</span><span><b>Approve in one tap.</b> It stages the video and caption; nothing posts until you say go.</span></li>
-        <li><span class="check">✓</span><span><b>Never repeats.</b> A fresh best-seller each week, posted to all your platforms.</span></li>
-      </ul>
-    </div>
-    <div class="phone">
-      <div class="plogo"><img src="taboost-mark.png" class="mark wmark" alt="TABOOST"/>TABOOST</div>
-      <h4>The product creators are pushing right now</h4>
-      <div class="cards">
-        <div class="c pop"><div class="v">2.07M</div><div class="l">units sold</div></div>
-        <div class="c"><div class="v">30%</div><div class="l">commission</div></div>
-      </div>
-    </div>
-  </div>
-</div></section>
-
-<section class="band soft" id="platforms"><div class="wrap">
+<section class="band" id="platforms"><div class="wrap">
   <span class="eyebrow">Platforms</span>
-  <h2 class="sec">Connect any site you can log into.</h2>
-  <p class="lede">New platforms are just a login page away — no integrations to wait on, no API reviews.</p>
+  <h2 class="sec">The places your customers already are.</h2>
+  <p class="lede">We add a platform once it has posted for real on our own accounts. The rest are marked as in testing until then.</p>
   <div class="plats">
     <div class="plat"><div class="nm">TikTok</div><span class="st live">● Live</span></div>
-    <div class="plat"><div class="nm">Instagram</div><span class="st live">● Live</span></div>
-    <div class="plat"><div class="nm">YouTube</div><span class="st soon">Rolling out</span></div>
-    <div class="plat"><div class="nm">+ more</div><span class="st soon">On request</span></div>
+    <div class="plat"><div class="nm">Instagram</div><span class="st soon">In testing</span></div>
+    <div class="plat"><div class="nm">YouTube</div><span class="st soon">In testing</span></div>
+    <div class="plat"><div class="nm">Facebook</div><span class="st soon">In testing</span></div>
+    <div class="plat"><div class="nm">X</div><span class="st soon">In testing</span></div>
+    <div class="plat"><div class="nm">LinkedIn</div><span class="st soon">In testing</span></div>
+    <div class="plat"><div class="nm">Pinterest</div><span class="st soon">In testing</span></div>
+    <div class="plat"><div class="nm">Threads</div><span class="st soon">In testing</span></div>
   </div>
 </div></section>
 
-<section class="band"><div class="wrap">
+<section class="band soft"><div class="wrap">
   <span class="eyebrow">The app</span>
-  <h2 class="sec">One dashboard. Every account.</h2>
-  <p class="lede">Connect your accounts, review this week's video, and post everywhere — from one place.</p>
+  <h2 class="sec">One screen. Every account.</h2>
+  <p class="lede">See which accounts are signed in, add your video, and watch each platform tick off.</p>
   <div class="app">
-    <div class="bar"><i></i><i></i><i></i><span class="t">TABOOST Poster</span></div>
+    <div class="bar"><i></i><i></i><i></i><span class="t">Northbound Poster</span></div>
     <div class="body">
       <div class="side">
         <div class="it on">◉ Accounts</div>
-        <div class="it">▤ Weekly video</div>
         <div class="it">✎ New post</div>
         <div class="it">⟳ History</div>
       </div>
       <div class="main">
-        <div class="acct"><div class="l"><span class="ic">T</span> TikTok</div><span class="badge live">Connected</span></div>
-        <div class="acct"><div class="l"><span class="ic">IG</span> Instagram</div><span class="badge live">Connected</span></div>
-        <div class="acct"><div class="l"><span class="ic">YT</span> YouTube</div><span class="badge" style="background:#f0f0f0;color:#888">Connect</span></div>
+        <div class="acct"><div class="l"><span class="ic">T</span> TikTok</div><span class="badge live">Signed in</span></div>
+        <div class="acct"><div class="l"><span class="ic">IG</span> Instagram</div><span class="badge live">Signed in</span></div>
+        <div class="acct"><div class="l"><span class="ic">YT</span> YouTube</div><span class="badge" style="background:#f0f0f0;color:#888">Sign in</span></div>
         <div style="margin-top:16px;border:1px dashed var(--line);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-          <div><div style="font-weight:800">⏳ This week's video is ready</div><div style="font-size:13px;color:var(--ink-soft)">SACHEU lip liner · 2.07M sold · 30% commission</div></div>
-          <button class="btn btn-pop" style="padding:10px 18px;font-size:14px">Approve &amp; post</button>
+          <div><div style="font-weight:800">spring-menu.mp4</div><div style="font-size:13px;color:var(--ink-soft)">Going to TikTok and Instagram</div></div>
+          <button class="btn btn-pop" style="padding:10px 18px;font-size:14px">Post</button>
         </div>
       </div>
     </div>
@@ -227,15 +205,15 @@
 
 <section class="band soft" id="pricing"><div class="wrap" style="text-align:center">
   <span class="eyebrow">Early access</span>
-  <h2 class="sec">Be one of the first creators on it.</h2>
+  <h2 class="sec">Be one of the first businesses on it.</h2>
   <p class="lede" style="margin:0 auto 34px">We're opening a limited early-access round. Drop your email and we'll send your invite and license key.</p>
   <div class="price">
     <div class="amt">$29<small>/mo</small></div>
-    <div style="color:var(--ink-soft);font-weight:600;margin-top:4px">Founding creator price — locked in</div>
+    <div style="color:var(--ink-soft);font-weight:600;margin-top:4px">Founding price, locked in</div>
     <ul>
       <li><span class="check">✓</span> Post to every connected platform</li>
-      <li><span class="check">✓</span> One auto-made branded video a week</li>
-      <li><span class="check">✓</span> Your logins stay yours — zero data stored</li>
+      <li><span class="check">✓</span> Post from your computer or your phone</li>
+      <li><span class="check">✓</span> Your logins stay on your computer</li>
       <li><span class="check">✓</span> New platforms added on request</li>
     </ul>
     <form class="signup" id="signup">
@@ -243,13 +221,13 @@
       <button class="btn btn-primary" type="submit">Get invite</button>
     </form>
     <div id="msg"></div>
-    <div style="font-size:12.5px;color:var(--ink-soft);margin-top:14px">No charge today — this reserves your spot. We'll email before anything's billed.</div>
+    <div style="font-size:12.5px;color:var(--ink-soft);margin-top:14px">No charge today. This reserves your spot, and we'll email before anything is billed.</div>
   </div>
 </div></section>
 
 <footer><div class="wrap">
-  <div class="logo" style="font-size:18px"><img src="taboost-mark.png" class="mark" alt="TABOOST"/>TABOOST</div>
-  <div>© 2026 TABOOST · Post everywhere from your own logins.</div>
+  <div class="logo" style="font-size:18px"><img src="northbound-mark.svg" class="mark" alt=""/>Northbound</div>
+  <div>© 2026 Northbound Studio · One video, every platform.</div>
 </div></footer>
 
 <script type="module">
@@ -302,9 +280,9 @@
     }catch(err){
       // Keep the lead even if the write is blocked (e.g. rules not published yet).
       try{
-        const list = JSON.parse(localStorage.getItem('taboost_waitlist')||'[]');
+        const list = JSON.parse(localStorage.getItem('poster_waitlist')||'[]');
         list.push({email, at:new Date().toISOString(), err: String(err && err.code || err)});
-        localStorage.setItem('taboost_waitlist', JSON.stringify(list));
+        localStorage.setItem('poster_waitlist', JSON.stringify(list));
       }catch(_){}
       msg.style.color = "#b00";
       msg.textContent = "Got it — saved. (If this persists, the signups write rule isn't published yet.)";

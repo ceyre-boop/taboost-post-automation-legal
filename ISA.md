@@ -4,7 +4,7 @@ tier: E4
 updated: 2026-10-14
 ---
 
-# TABOOST Poster — Ideal State Artifact
+# Northbound Poster — Ideal State Artifact
 
 ## Problem
 The first attempt at post automation went through the TikTok Content Posting API: developer app, review, API keys, privacy and terms pages (the HTML files still in this repo). Review is slow, scopes are narrow, and every agency using it would still depend on our app credentials. RnR's Auto-Messenger suite proves a different route works at scale with zero API: it drives the agency's own Chrome.
@@ -71,6 +71,7 @@ Live probes against the real Chrome on this machine. Selectors on TikTok Studio 
 - 2026-10-14 The legal HTML pages stay in this repo for now so the GitHub Pages URL keeps working; the tool lives alongside in `src/`.
 
 ## Changelog
+- 2026-11-18 Renamed TABOOST Poster to Northbound Poster, to sell as Northbound Studio's first automation. Product surface renamed (CLI, dashboard, phone page, desktop app, site, signup email); the weekly-video and pipeline tools stay TABOOST because they are TABOOST's own content, not the product. Existing installs keep their data folder (`TaboostPoster`, and the desktop app's `TABOOST Poster`) so nobody is signed out. New: `POSTER_ACCOUNT` for a second set of accounts. Not done: no platform beyond TikTok has posted for real; the site address and the GitHub repo still carry the old name; no release has been cut under the new name, so the site's download links only work after the next tag.
 - 2026-10-14 Conjecture: `button:has-text("Post")` is a safe fallback. Refutation: it matched the sidebar "Posts" first; two live runs clicked the wrong button and the tool reported "Done" anyway. Learning: exact-text selectors only, and "published" requires a positive signal (redirect to Posts or an upload dialog), never a timeout.
 - 2026-10-14 TikTok asks "Continue to post?" when its copyright check is mid-run. Adapter now waits up to 90s for the check and answers "Post now" if still asked.
 - 2026-10-14 TikTok Studio shows a one-off "Turn on automatic content checks?" modal that intercepts clicks. Added `dismissModals` (clicks Cancel/Not now/Skip only, never changes settings). Dry run then passed in 21s.

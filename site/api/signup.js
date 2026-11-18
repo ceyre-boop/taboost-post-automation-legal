@@ -11,7 +11,7 @@ export default async function handler(req, res) {
 
   const key = process.env.RESEND_API_KEY;
   if (!key) return res.status(503).json({ error: "email not configured yet" });
-  const FROM = process.env.MAIL_FROM || "TABOOST <onboarding@resend.dev>";
+  const FROM = process.env.MAIL_FROM || "Northbound Studio <onboarding@resend.dev>";
   const NOTIFY = process.env.NOTIFY_TO || "";
 
   const send = (to, subject, html) =>
@@ -24,19 +24,19 @@ export default async function handler(req, res) {
   try {
     const welcome = await send(
       email,
-      "You're on the TABOOST early-access list 🎉",
-      `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;color:#0E1414">
-         <h2 style="color:#009999;margin:0 0 8px">You're in.</h2>
-         <p>Thanks for joining the TABOOST early-access list. We'll send your invite and license key the moment your spot opens.</p>
-         <p>In the meantime: TABOOST Poster posts to every platform from your own logins — no API keys, no passwords, ever.</p>
-         <p style="color:#667">— TABOOST</p>
+      "You're on the Northbound Poster early-access list",
+      `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;color:#0a0e1a">
+         <h2 style="color:#3d6df2;margin:0 0 8px">You're in.</h2>
+         <p>Thanks for joining the Northbound Poster early-access list. We'll send your invite and license key the moment your spot opens.</p>
+         <p>In the meantime: Northbound Poster sends one video to every platform you use, from your own logins. We never see a password.</p>
+         <p style="color:#667">Northbound Studio</p>
        </div>`
     );
     const body = await welcome.json().catch(() => ({}));
     if (!welcome.ok) return res.status(502).json({ error: "send failed", detail: body });
 
     if (NOTIFY) {
-      await send(NOTIFY, "New TABOOST signup", `<p>New early-access signup: <b>${email}</b></p>`).catch(() => {});
+      await send(NOTIFY, "New Northbound Poster signup", `<p>New early-access signup: <b>${email}</b></p>`).catch(() => {});
     }
     return res.status(200).json({ ok: true });
   } catch (e) {

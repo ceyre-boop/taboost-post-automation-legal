@@ -1,4 +1,4 @@
-// TABOOST Poster — phone remote.
+// Northbound Poster — phone remote.
 // Starts the tool's Chrome, the upload server, and a public tunnel so a phone can
 // post from anywhere. The phone only ever uploads a video + caption; the posting
 // runs here, on this machine's logged-in Chrome. No API keys, no stored passwords.
@@ -42,7 +42,7 @@ function have(cmd: string): boolean {
   catch { return false; }
 }
 
-/** The Mac's Bonjour name (e.g. TABOOSTs-MacBook-Pro.local). Unlike the IP it doesn't
+/** The Mac's Bonjour name (e.g. Sams-MacBook-Pro.local). Unlike the IP it doesn't
  *  change when the Wi-Fi hands out a new address, so the phone link keeps working. */
 function bonjourHost(): string | null {
   try {
@@ -103,7 +103,7 @@ function box(lines: string[]): void {
 }
 
 async function main(): Promise<void> {
-  console.log("Starting TABOOST Poster phone remote…");
+  console.log("Starting Northbound Poster phone remote…");
   await launchChrome("https://www.tiktok.com/tiktokstudio/upload"); // opens the profile's Chrome
 
   const useTunnel = !has("lan") && have("cloudflared");
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
     try { writeFileSync(URL_FILE, phoneUrl + "\n"); } catch {}
     try { const p = spawn("pbcopy"); p.stdin.end(phoneUrl); } catch {} // handy on macOS
     box([
-      "TABOOST Poster is live. Open this on the iPhone:",
+      "Northbound Poster is live. Open this on the iPhone:",
       "",
       phoneUrl,
       "",

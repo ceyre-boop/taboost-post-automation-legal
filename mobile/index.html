@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<meta name="theme-color" content="#0E1414" />
+<meta name="theme-color" content="#0a0e1a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="TABOOST" />
-<link rel="apple-touch-icon" href="genie.jpg" />
-<title>TABOOST Poster</title>
+<meta name="apple-mobile-web-app-title" content="Poster" />
+<link rel="apple-touch-icon" href="logo.png" />
+<title>Northbound Poster</title>
 <style>
   :root{
-    --pink:#FF0059; --pink-deep:#B80040; --ink:#0E1414; --ink-2:#121818;
+    --pink:#4f7dff; --pink-deep:#2a4fc0; --ink:#0a0e1a; --ink-2:#10162a;
     --paper:#fff; --pop:#FFC247; --pop-ink:#3A2A00;
     --muted:rgba(255,255,255,.60); --muted-2:rgba(255,255,255,.42);
     --card:rgba(255,255,255,.045); --card-brd:rgba(255,255,255,.09);
-    --field:#0b1010; --ok:#2BD67B; --radius:20px;
+    --field:#080b14; --ok:#2BD67B; --radius:20px;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0}
@@ -23,7 +23,7 @@
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
     color:var(--paper); min-height:100dvh; line-height:1.45;
     background:
-      radial-gradient(130% 70% at 85% -10%, rgba(255,0,89,.22), transparent 60%),
+      radial-gradient(130% 70% at 85% -10%, rgba(79,125,255,.22), transparent 60%),
       radial-gradient(120% 60% at -10% 0%, rgba(255,194,71,.08), transparent 55%),
       var(--ink);
     background-attachment:fixed;
@@ -35,7 +35,7 @@
   /* ---- header ---- */
   header{display:flex;align-items:center;gap:13px;margin:4px 2px 22px}
   .logo{width:46px;height:46px;border-radius:14px;display:block;object-fit:cover;
-    box-shadow:0 8px 22px rgba(255,0,89,.35),inset 0 0 0 1px rgba(255,255,255,.12)}
+    box-shadow:0 8px 22px rgba(79,125,255,.35),inset 0 0 0 1px rgba(255,255,255,.12)}
   .brand h1{font-size:18px;margin:0;font-weight:800;letter-spacing:-.3px}
   .brand p{margin:2px 0 0;color:var(--muted);font-weight:600;font-size:12.5px}
   .beta{margin-left:auto;font-size:10px;font-weight:800;letter-spacing:1px;color:var(--pop);
@@ -58,7 +58,7 @@
   .drop svg{display:block;margin:0 0 6px;opacity:.7;color:var(--pink)}
   .drop .big{display:block;color:var(--paper);font-size:16px;font-weight:700}
   .drop .sub{display:block;font-size:12.5px;color:var(--muted-2)}
-  .drop.have{min-height:0;border-style:solid;border-color:var(--pink);background:rgba(255,0,89,.07);color:var(--paper)}
+  .drop.have{min-height:0;border-style:solid;border-color:var(--pink);background:rgba(79,125,255,.07);color:var(--paper)}
   .drop.have svg{opacity:1}
   .drop.have .fn{display:block;max-width:100%;font-size:13px;font-weight:600;color:var(--muted);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -68,7 +68,7 @@
   textarea{width:100%;min-height:96px;resize:none;background:var(--field);color:var(--paper);
     border:1px solid var(--card-brd);border-radius:13px;padding:13px;font:inherit;font-size:16px;line-height:1.4}
   textarea::placeholder{color:var(--muted-2)}
-  textarea:focus{outline:none;border-color:rgba(255,0,89,.5);box-shadow:0 0 0 3px rgba(255,0,89,.12)}
+  textarea:focus{outline:none;border-color:rgba(79,125,255,.5);box-shadow:0 0 0 3px rgba(79,125,255,.12)}
   .cc{text-align:right;font-size:11px;color:var(--muted-2);margin-top:6px;font-weight:600}
 
   /* ---- platform chips ---- */
@@ -78,7 +78,7 @@
     cursor:pointer;transition:.12s;user-select:none}
   .chip .dot{width:8px;height:8px;border-radius:50%;background:#4a5252;flex:none;transition:.12s}
   .chip.on .dot{background:var(--ok);box-shadow:0 0 8px rgba(43,214,123,.7)}
-  .chip.sel{border-color:var(--pink);background:rgba(255,0,89,.16);color:#fff;box-shadow:inset 0 0 0 1px var(--pink)}
+  .chip.sel{border-color:var(--pink);background:rgba(79,125,255,.16);color:#fff;box-shadow:inset 0 0 0 1px var(--pink)}
   .chip.sel .dot{background:#fff;box-shadow:none}
   .chip.connect{opacity:.7;border-style:dashed}
   .chip.connect .mini{color:var(--pink)}
@@ -98,7 +98,7 @@
   .bar .inner{max-width:480px;margin:0 auto;pointer-events:auto}
   .post{width:100%;border:0;border-radius:15px;padding:17px;font-size:17px;font-weight:800;
     letter-spacing:.2px;color:#000;background:var(--pink);cursor:pointer;transition:.15s;
-    box-shadow:0 10px 30px rgba(255,0,89,.42)}
+    box-shadow:0 10px 30px rgba(79,125,255,.42)}
   .post:active{transform:translateY(1px)}
   .post:disabled{opacity:.4;box-shadow:none;background:#3a2630;color:rgba(255,255,255,.5);cursor:default}
   .post.busy{background:var(--pop);color:var(--pop-ink)}
@@ -150,8 +150,8 @@
 <body>
 <div class="wrap">
   <header>
-    <img class="logo" src="genie.jpg" alt="TABOOST" />
-    <div class="brand"><h1>TABOOST&nbsp;Poster</h1><p>One upload, every platform</p></div>
+    <img class="logo" src="logo.png" alt="" />
+    <div class="brand"><h1>Northbound&nbsp;Poster</h1><p>One upload, every platform</p></div>
     <span class="beta">BETA</span>
   </header>
 
@@ -192,7 +192,7 @@
 
   <div id="prog"></div>
   </div>
-  <footer>TABOOST · secure · no passwords stored</footer>
+  <footer>Northbound Studio · secure · no passwords stored</footer>
 </div>
 
 <div class="sheet" id="sheet">
@@ -217,8 +217,8 @@
 <script>
 const QS = new URLSearchParams(location.search);
 const KEY = QS.get("k") || "";
-let DEV = QS.get("d") || (()=>{ try{ return localStorage.getItem("taboost-device")||""; }catch{ return ""; } })();
-const hdrs = () => ({ ...(KEY?{"x-taboost-key":KEY}:{}), ...(DEV?{"x-taboost-device":DEV}:{}) });
+let DEV = QS.get("d") || (()=>{ try{ return localStorage.getItem("poster-device")||localStorage.getItem("taboost-device")||""; }catch{ return ""; } })();
+const hdrs = () => ({ ...(KEY?{"x-poster-key":KEY}:{}), ...(DEV?{"x-poster-device":DEV}:{}) });
 const api = (p, opts={}) => fetch(p, { ...opts, headers: { ...(opts.headers||{}), ...hdrs() } });
 const q = (extra={}) => new URLSearchParams({ ...(KEY?{k:KEY}:{}), ...(DEV?{d:DEV}:{}), ...extra }).toString();
 const $ = (id) => document.getElementById(id);
@@ -409,7 +409,7 @@ async function pollJob(id){
 
 // ---------- who's posting (each phone = its own accounts) ----------
 function remember(){
-  try{ localStorage.setItem("taboost-device", DEV); }catch{}
+  try{ localStorage.setItem("poster-device", DEV); }catch{}
   const u = new URL(location.href); u.searchParams.set("d", DEV); history.replaceState(null, "", u);
 }
 function showMain(name){
@@ -433,7 +433,7 @@ $("whoname").addEventListener("keydown", (e)=>{ if(e.key==="Enter") $("whogo").c
   try{
     const r = await api("/api/device");
     if(r.status === 401) throw new Error((await r.json()).error);
-    if(!r.ok){ DEV = ""; try{ localStorage.removeItem("taboost-device"); }catch{} return askWho(); }
+    if(!r.ok){ DEV = ""; try{ localStorage.removeItem("poster-device"); localStorage.removeItem("taboost-device"); }catch{} return askWho(); }
     const j = await r.json(); remember(); showMain(j.name);
   }catch(e){ banner("Couldn't reach the poster: " + e.message, "err"); }
 })();

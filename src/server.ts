@@ -40,7 +40,7 @@ function mobileHtml(): Buffer {
 let ACCESS_TOKEN = process.env.POSTER_ACCESS_TOKEN || "";
 function authorized(req: IncomingMessage, url: URL): boolean {
   if (!ACCESS_TOKEN) return true;
-  const given = url.searchParams.get("k") || (req.headers["x-taboost-key"] as string) || "";
+  const given = url.searchParams.get("k") || (req.headers["x-poster-key"] as string) || "";
   return given === ACCESS_TOKEN;
 }
 
@@ -52,14 +52,14 @@ interface Job {
 }
 const jobs = new Map<string, Job>();
 
-/** The phone's device (from the x-taboost-device header or ?d=), if it has one. */
+/** The phone's device (from the x-poster-device header or ?d=), if it has one. */
 function deviceFor(req: IncomingMessage, url: URL): Device | null {
-  return getDevice((req.headers["x-taboost-device"] as string) || url.searchParams.get("d"));
+  return getDevice((req.headers["x-poster-device"] as string) || url.searchParams.get("d"));
 }
 /** A phone with a device id posts from ITS profile. An id we don't know is refused
  *  rather than silently falling back to the default profile's accounts. */
 function profileFor(req: IncomingMessage, url: URL): Profile {
-  const raw = (req.headers["x-taboost-device"] as string) || url.searchParams.get("d");
+  const raw = (req.headers["x-poster-device"] as string) || url.searchParams.get("d");
   if (!raw) return defaultProfile;
   const d = getDevice(raw);
   if (!d) throw new Error("This phone isn't registered any more. Reopen the link and enter your name.");
@@ -151,12 +151,12 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://127.0.0.1:${PORT}`);
   try {
     // The logo is non-sensitive and loaded by an <img> that can't send the key header.
-    if (req.method === "GET" && url.pathname === "/genie.jpg") {
+    if (req.method === "GET" && url.pathname === "/logo.png") {
       const p = process.env.POSTER_MOBILE_HTML
-        ? join(dirname(process.env.POSTER_MOBILE_HTML), "genie.jpg")
-        : join(dirname(fileURLToPath(import.meta.url)), "..", "mobile", "genie.jpg");
+        ? join(dirname(process.env.POSTER_MOBILE_HTML), "logo.png")
+        : join(dirname(fileURLToPath(import.meta.url)), "..", "mobile", "logo.png");
       try {
-        res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "max-age=86400" });
+        res.writeHead(200, { "content-type": "image/png", "cache-control": "max-age=86400" });
         return res.end(readFileSync(p));
       } catch { return json(res, 404, { error: "no logo" }); }
     }
@@ -286,7 +286,7 @@ export function startServer(
     server.listen(PORT, host, () => {
       server.removeListener("error", onErr);
       const u = `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${PORT}`;
-      console.log(`TABOOST Poster dashboard: ${u}  (Chrome CDP :${CDP_PORT})`);
+      console.log(`Northbound Poster dashboard: ${u}  (Chrome CDP :${CDP_PORT})`);
       if (opts.open !== false && !process.argv.includes("--no-open")) {
         spawn("open", [u], { stdio: "ignore" }).unref();
       }

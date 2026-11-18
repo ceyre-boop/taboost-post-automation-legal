@@ -2,7 +2,7 @@
 // so the renderer only ever sees these two narrow functions.
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("taboost", {
+contextBridge.exposeInMainWorld("poster", {
   activate: (key) => ipcRenderer.invoke("license:activate", key),
   current: () => ipcRenderer.invoke("license:current"),
 });

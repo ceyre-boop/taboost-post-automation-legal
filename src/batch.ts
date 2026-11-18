@@ -1,7 +1,7 @@
 // Batch posting: N user-provided videos × M platforms from one setup.
 // Orchestrates the existing per-platform adapters; posts sequentially (the CDP
 // engine allows one attach at a time) with human-like spacing between LIVE posts.
-// Resumable: state lives in ~/Library/Application Support/TaboostPoster/batches/<id>.json.
+// Resumable: state lives in <app data folder>/batches/<id>.json.
 import { basename, extname, join, resolve } from "node:path";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { getPlatform, PLATFORMS } from "./platforms/index.ts";

@@ -1,12 +1,20 @@
 import { app, BrowserWindow, ipcMain, shell, Menu } from "electron";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { startServer } from "../../src/server.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url)); // .../dist
 const FIREBASE_PROJECT = "post-automation-12546";
 const PORT = Number(process.env.POSTER_PORT ?? 4747);
+const SITE = "https://taboost-poster.vercel.app"; // moves when the site gets its Northbound address
+
+// The app was called "TABOOST Poster" before. Keep using that data folder where it exists,
+// so an update never signs anyone out or asks for the license key again.
+{
+  const legacy = join(app.getPath("appData"), "TABOOST Poster");
+  if (existsSync(legacy) && !existsSync(app.getPath("userData"))) app.setPath("userData", legacy);
+}
 
 let win: BrowserWindow | null = null;
 let engineUrl: string | null = null;
@@ -38,7 +46,7 @@ async function validateKey(raw: string): Promise<{ ok: boolean; email?: string; 
     if (!r.ok) return { ok: false, error: `Couldn't verify the key (server ${r.status}). Try again in a moment.` };
     const body: any = await r.json();
     const f = body.fields || {};
-    if (f.active && f.active.booleanValue === false) return { ok: false, error: "This key has been deactivated. Contact TABOOST." };
+    if (f.active && f.active.booleanValue === false) return { ok: false, error: "This key has been deactivated. Contact Northbound Studio." };
     return { ok: true, email: f.email?.stringValue };
   } catch {
     return { ok: false, error: "No internet connection — can't verify your key right now." };
@@ -66,8 +74,8 @@ function showLicense(): void {
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1120, height: 820, minWidth: 860, minHeight: 600,
-    title: "TABOOST Poster",
-    backgroundColor: "#0E1414",
+    title: "Northbound Poster",
+    backgroundColor: "#0a0e1a",
     webPreferences: {
       preload: join(HERE, "preload.cjs"),
       contextIsolation: true,
@@ -105,7 +113,7 @@ function buildMenu(): void {
     {
       label: "Help",
       submenu: [
-        { label: "Get a key / manage account", click: () => shell.openExternal("https://taboost-poster.vercel.app/app") },
+        { label: "Get a key / manage account", click: () => shell.openExternal(`${SITE}/app`) },
       ],
     },
   ];
@@ -127,7 +135,7 @@ app.whenReady().then(() => {
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   // Smoke test: boot, report which screen loaded, then quit. Used by CI / local verify.
-  if (process.env.TABOOST_SMOKE) {
+  if (process.env.POSTER_SMOKE) {
     setTimeout(() => {
       console.log(`SMOKE_OK screen=${readLicense()?.key ? "dashboard" : "license"} engine=${engineUrl ?? "not-started"}`);
       app.quit();

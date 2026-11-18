@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TABOOST Poster</title>
+<title>Northbound Poster</title>
 <style>
-  :root { --bg:#0f1117; --card:#181b24; --line:#262a36; --text:#e8eaf0; --muted:#8b91a3; --accent:#00a8cc; --ok:#2ecc71; --bad:#ff5c5c; }
+  :root { --bg:#0a0e1a; --card:#121829; --line:#232c47; --text:#e8eaf0; --muted:#8b91a3; --accent:#6f9bff; --ok:#2ecc71; --bad:#ff5c5c; }
   * { box-sizing:border-box }
   body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   main { max-width:960px; margin:0 auto; padding:32px 16px 64px }
@@ -20,7 +20,7 @@
   button.ghost { background:transparent; color:var(--text); border:1px solid var(--line) }
   button:disabled { opacity:.5; cursor:default }
   form.post { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; display:grid; gap:14px }
-  textarea, input[type=file] { width:100%; background:#0f1117; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; font:inherit }
+  textarea, input[type=file] { width:100%; background:#0a0e1a; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; font:inherit }
   textarea { min-height:110px; resize:vertical }
   .row { display:flex; flex-wrap:wrap; gap:16px; align-items:center }
   label.chk { display:flex; gap:6px; align-items:center; cursor:pointer }
@@ -33,29 +33,29 @@
 </head>
 <body>
 <main>
-  <h1>TABOOST Poster</h1>
-  <p class="sub">Your own Chrome, your own logins. One click, every platform.</p>
+  <h1>Northbound Poster</h1>
+  <p class="sub">One video, every platform. Sign in once, then post from here.</p>
 
-  <h2>Accounts</h2>
-  <div class="cards" id="cards"><div class="card">Checking Chrome…</div></div>
+  <h2>1. Sign in to your accounts</h2>
+  <div class="cards" id="cards"><div class="card">Checking your accounts…</div></div>
 
-  <h2>New post — drop in as many clips as you want</h2>
+  <h2>2. Add your video</h2>
   <form class="post" id="form">
     <input type="file" name="videos" accept="video/mp4,video/quicktime,video/*" multiple required>
     <div id="files"></div>
-    <textarea name="caption" placeholder="Shared caption for every clip. (YouTube: first line becomes the title.) Add a per-clip caption below to override one."></textarea>
+    <textarea name="caption" placeholder="Write the caption. On YouTube the first line becomes the title."></textarea>
     <div class="row" id="targets"></div>
     <div class="row">
-      <label class="chk"><input type="checkbox" name="live"> <b>Publish for real</b> <span class="warn">(unchecked = dry run, fills everything but never clicks Post)</span></label>
-      <label class="chk">Space live posts <input type="number" name="space" value="60" min="10" max="900" style="width:60px"> s apart</label>
+      <label class="chk"><input type="checkbox" name="live"> <b>Post for real</b> <span class="warn">Leave this off to rehearse: it fills everything in and stops before the Post button.</span></label>
+      <label class="chk">Wait <input type="number" name="space" value="60" min="10" max="900" style="width:60px"> seconds between posts to the same account</label>
     </div>
-    <div class="row"><button type="submit" id="go">Post all</button><span id="hint" class="warn"></span></div>
+    <div class="row"><button type="submit" id="go">Rehearse</button><span id="hint" class="warn"></span></div>
   </form>
 
-  <h2>Progress</h2>
-  <div id="grid"><span class="sub">No batch running.</span></div>
+  <h2>3. Watch it go</h2>
+  <div id="grid"><span class="sub">Nothing is posting right now.</span></div>
 
-  <h2>Activity</h2>
+  <h2>What it is doing</h2>
   <pre class="log" id="log">Idle.</pre>
 </main>
 <script>
@@ -66,18 +66,18 @@ async function loadStatus() {
     platforms = await (await fetch("/api/status")).json();
     $("#cards").innerHTML = Object.entries(platforms).map(([id, p]) => `
       <div class="card">
-        <div class="name"><span class="dot ${p.loggedIn ? "ok" : "bad"}"></span>${p.label}${p.verified ? "" : ' <span class="beta">unverified</span>'}</div>
-        <div class="st">${p.loggedIn ? "Connected (logged in)" : "Not logged in"}</div>
-        <button class="${p.loggedIn ? "ghost" : ""}" onclick="connect('${id}')">${p.loggedIn ? "Open login page" : "Connect"}</button>
+        <div class="name"><span class="dot ${p.loggedIn ? "ok" : "bad"}"></span>${p.label}${p.verified ? "" : ' <span class="beta">in testing</span>'}</div>
+        <div class="st">${p.loggedIn ? "Signed in" : "Not signed in"}</div>
+        <button class="${p.loggedIn ? "ghost" : ""}" onclick="connect('${id}')">${p.loggedIn ? "Open sign-in page" : "Sign in"}</button>
       </div>`).join("");
     $("#targets").innerHTML = Object.entries(platforms).map(([id, p]) =>
-      `<label class="chk"><input type="checkbox" name="platforms" value="${id}" ${p.loggedIn ? "checked" : "disabled"}> ${p.label}${p.loggedIn ? (p.verified ? "" : " · unverified") : " (connect first)"}</label>`).join("");
-  } catch (e) { $("#cards").innerHTML = `<div class="card">Could not reach Chrome: ${e.message}</div>`; }
+      `<label class="chk"><input type="checkbox" name="platforms" value="${id}" ${p.loggedIn ? "checked" : "disabled"}> ${p.label}${p.loggedIn ? (p.verified ? "" : " · in testing") : " (sign in first)"}</label>`).join("");
+  } catch (e) { $("#cards").innerHTML = `<div class="card">Could not open the browser: ${e.message}</div>`; }
 }
 async function connect(id) {
-  $("#log").textContent = `Opening ${platforms[id].label} login in the tool's Chrome window. Log in there; this page refreshes by itself.`;
+  $("#log").textContent = `A browser window is opening on ${platforms[id].label}. Sign in there. This page updates by itself.`;
   await fetch("/api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ platform: id }) });
-  const t = setInterval(async () => { await loadStatus(); if (platforms[id].loggedIn) { clearInterval(t); $("#log").textContent = `${platforms[id].label} connected.`; } }, 4000);
+  const t = setInterval(async () => { await loadStatus(); if (platforms[id].loggedIn) { clearInterval(t); $("#log").textContent = `${platforms[id].label} is signed in.`; } }, 4000);
 }
 // List the selected clips, each with an optional per-clip caption (caption0, caption1, …).
 $("input[name=videos]").addEventListener("change", (e) => {
@@ -85,7 +85,7 @@ $("input[name=videos]").addEventListener("change", (e) => {
   $("#files").innerHTML = files.length
     ? files.map((f, i) => `<div class="row"><span style="min-width:170px">🎬 ${f.name}</span><input name="caption${i}" placeholder="caption for this clip (optional)" style="flex:1"></div>`).join("")
     : "";
-  $("#go").textContent = files.length > 1 ? `Post all ${files.length}` : "Post";
+  label();
 });
 
 function cell(st) {
@@ -112,7 +112,7 @@ $("#form").addEventListener("submit", async (ev) => {
   const fd = new FormData(ev.target);
   const vids = fd.getAll("videos").filter(f => f && f.size > 0);
   if (!vids.length) { $("#hint").textContent = "Pick at least one video."; return; }
-  if (!fd.getAll("platforms").length) { $("#hint").textContent = "Pick at least one connected platform."; return; }
+  if (!fd.getAll("platforms").length) { $("#hint").textContent = "Tick at least one platform you are signed in to."; return; }
   $("#go").disabled = true; $("#hint").textContent = "";
   $("#log").textContent = `Uploading ${vids.length} clip(s)…`; $("#grid").innerHTML = "";
   const r = await (await fetch("/api/batch", { method: "POST", body: fd })).json();
@@ -124,6 +124,13 @@ $("#form").addEventListener("submit", async (ev) => {
     if (j.done) { clearInterval(poll); $("#go").disabled = false; }
   }, 1500);
 });
+// The button says what it will really do.
+function label() {
+  const n = $("input[name=videos]").files.length;
+  const live = $("input[name=live]").checked;
+  $("#go").textContent = (live ? "Post" : "Rehearse") + (n > 1 ? ` all ${n}` : "");
+}
+$("input[name=live]").addEventListener("change", label);
 loadStatus();
 </script>
 </body>

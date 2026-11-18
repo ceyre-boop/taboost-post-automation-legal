@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>TABOOST Poster — Sign in</title>
+<title>Northbound Poster — Sign in</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 <style>
-  :root{--teal:#009999;--teal-dark:#00706F;--ink:#0E1414;--ink-soft:#33403f;--paper:#fff;--pop:#FFC247;--line:#e4eaea;--bg:#f4f8f8;--font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+  :root{--teal:#3d6df2;--teal-dark:#2a4fc0;--ink:#0a0e1a;--ink-soft:#33403f;--paper:#fff;--pop:#FFC247;--line:#e4eaea;--bg:#f4f8f8;--font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
   body{margin:0;font-family:var(--font);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
   a{color:var(--teal-dark);text-decoration:none}
@@ -29,7 +29,7 @@
   #msg{font-size:14px;font-weight:600;margin-top:14px;min-height:18px}
   .ok{color:var(--teal-dark)} .err{color:#b00}
   .hide{display:none}
-  .badge{display:inline-block;font-size:12px;font-weight:800;padding:4px 12px;border-radius:999px;background:rgba(0,153,153,.12);color:var(--teal-dark);letter-spacing:.3px}
+  .badge{display:inline-block;font-size:12px;font-weight:800;padding:4px 12px;border-radius:999px;background:rgba(61,109,242,.12);color:var(--teal-dark);letter-spacing:.3px}
   .badge.admin{background:var(--pop);color:#3A2A00}
   .row{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:10px}
   .adminbox{margin-top:20px;border-top:1px solid var(--line);padding-top:18px}
@@ -45,7 +45,7 @@
 </head>
 <body>
 <div class="top">
-  <a href="/" class="logo"><img src="taboost-mark.png" alt="TABOOST"/>TABOOST</a>
+  <a href="/" class="logo"><img src="northbound-mark.svg" alt=""/>Northbound</a>
   <a href="/" style="font-weight:600;font-size:14px">← Home</a>
 </div>
 <div class="wrap">
@@ -53,7 +53,7 @@
     <!-- AUTH (login / signup) -->
     <div id="authView">
       <h1 id="authTitle">Sign in</h1>
-      <p class="sub" id="authSub">Welcome back to TABOOST Poster.</p>
+      <p class="sub" id="authSub">Welcome back to Northbound Poster.</p>
       <form id="authForm">
         <label for="email">Email</label>
         <input id="email" type="email" autocomplete="email" required placeholder="you@email.com" />
@@ -91,10 +91,10 @@
         </div>
         <p class="dlhead">Download the app, open it, and paste this key to activate:</p>
         <div class="dlgrid">
-          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/TABOOST-Poster-mac-arm64.dmg">macOS<small>Apple Silicon</small></a>
-          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/TABOOST-Poster-mac-x64.dmg">macOS<small>Intel</small></a>
-          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/TABOOST-Poster-Windows.exe">Windows<small>.exe installer</small></a>
-          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/TABOOST-Poster-Linux.AppImage">Linux<small>.AppImage</small></a>
+          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/Northbound-Poster-mac-arm64.dmg">macOS<small>Apple Silicon</small></a>
+          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/Northbound-Poster-mac-x64.dmg">macOS<small>Intel</small></a>
+          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/Northbound-Poster-Windows.exe">Windows<small>.exe installer</small></a>
+          <a class="dl" href="https://github.com/ceyre-boop/taboost-post-automation-legal/releases/latest/download/Northbound-Poster-Linux.AppImage">Linux<small>.AppImage</small></a>
         </div>
         <p class="muted" style="text-align:left;margin:12px 0 0;font-size:12px">First open on Mac: if it says "couldn't verify", click Done, then <b>System Settings → Privacy &amp; Security → Open Anyway</b>. Windows: <b>More info → Run anyway</b>. <a href="/download">Full steps</a>.</p>
       </div>
@@ -141,7 +141,7 @@
     mode = mode === "login" ? "signup" : "login";
     const signup = mode === "signup";
     $("authTitle").textContent = signup ? "Create your account" : "Sign in";
-    $("authSub").textContent = signup ? "Start posting from your own logins." : "Welcome back to TABOOST Poster.";
+    $("authSub").textContent = signup ? "Start posting from your own logins." : "Welcome back to Northbound Poster.";
     $("authBtn").textContent = signup ? "Create account" : "Sign in";
     $("toggleTxt").textContent = signup ? "Already have an account?" : "New here?";
     $("toggle").textContent = signup ? "Sign in" : "Create an account";
@@ -207,7 +207,7 @@
     try { await setDoc(doc(db, "users", user.uid),
       { email: user.email, role: admin ? "admin" : "member", lastSeen: serverTimestamp() }, { merge: true }); } catch (_) {}
     $("appEmail").textContent = user.email;
-    $("appWho").textContent = admin ? "You have full admin access." : "Your TABOOST Poster account.";
+    $("appWho").textContent = admin ? "You have full admin access." : "Your Northbound Poster account.";
     $("appRole").innerHTML = admin ? "<span class='badge admin'>ADMIN · full access</span>" : "<span class='badge'>Member</span>";
     $("adminBox").classList.toggle("hide", !admin);
     if (admin) loadAdmin();
@@ -221,7 +221,7 @@
     const bytes = new Uint8Array(12); crypto.getRandomValues(bytes);
     const abc = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I ambiguity
     const s = [...bytes].map((b) => abc[b % 32]).join("");
-    return `TBP-${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}`;
+    return `NBP-${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}`;
   }
   async function ensureLicense(user) {
     try {
