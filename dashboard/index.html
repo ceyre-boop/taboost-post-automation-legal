@@ -47,6 +47,7 @@
     <div class="row" id="targets"></div>
     <div class="row">
       <label class="chk"><input type="checkbox" name="live"> <b>Post for real</b> <span class="warn">Leave this off to rehearse: it fills everything in and stops before the Post button.</span></label>
+      <label class="chk" id="delwrap" hidden><input type="checkbox" name="deleteAfter"> <b>Test post</b> <span class="warn">Post it, then delete it straight away. Needs a caption so the post can be found again.</span></label>
       <label class="chk">Wait <input type="number" name="space" value="60" min="10" max="900" style="width:60px"> seconds between posts to the same account</label>
     </div>
     <div class="row"><button type="submit" id="go">Rehearse</button><span id="hint" class="warn"></span></div>
@@ -128,8 +129,12 @@ $("#form").addEventListener("submit", async (ev) => {
 function label() {
   const n = $("input[name=videos]").files.length;
   const live = $("input[name=live]").checked;
-  $("#go").textContent = (live ? "Post" : "Rehearse") + (n > 1 ? ` all ${n}` : "");
+  const del = $("input[name=deleteAfter]");
+  $("#delwrap").hidden = !live;
+  if (!live) del.checked = false;
+  $("#go").textContent = (live ? (del.checked ? "Post, then delete" : "Post") : "Rehearse") + (n > 1 ? ` all ${n}` : "");
 }
+$("input[name=deleteAfter]").addEventListener("change", label);
 $("input[name=live]").addEventListener("change", label);
 loadStatus();
 </script>

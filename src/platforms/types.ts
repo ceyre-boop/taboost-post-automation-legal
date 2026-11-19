@@ -21,4 +21,7 @@ export interface Platform {
   isLoggedIn(page: Page): Promise<boolean>;
   /** Drive the native upload UI. */
   post(page: Page, input: PostInput, log: (m: string) => void): Promise<void>;
+  /** Take down the post that carries this caption. Finds it on the account's own post list,
+   *  and throws rather than deleting anything it cannot match to the caption. */
+  remove?(page: Page, caption: string, log: (m: string) => void): Promise<void>;
 }

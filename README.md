@@ -8,9 +8,14 @@ It was called TABOOST Poster until 2026-11-18. The repo keeps its old name so th
 
 | Platform | State |
 |---|---|
-| TikTok | Posts for real (12 live posts) |
-| Instagram, YouTube, X, Facebook, LinkedIn, Threads | Rehearse cleanly to the Post button, video and caption seen on screen (2026-11-18). Not yet posted for real |
-| Pinterest | Uploads, then needs a board on the account; untested past that |
+| TikTok, Instagram, YouTube, X, Facebook, LinkedIn, Threads | Post for real and delete for real. One clip went up on all seven in about a minute and was then taken down on each (2026-11-18) |
+| Pinterest | Uploads, then needs a board on the account; untested past that, no delete step |
+
+## Test post (post, then delete)
+
+`node src/cli.ts post --video clip.mp4 --caption "..." --live --delete-after` posts for real and takes the post straight back down. In the dashboard, tick **Post for real** and then **Test post**. `node src/cli.ts delete --caption "..." --platform x,tiktok` removes an earlier post.
+
+The post is found again by the first line of its caption, on the account's own post list. If nothing matches, nothing is deleted. Facebook moves the post to its trash for 30 days; the others delete outright. TikTok held the test clip as "Content under review" and visible to "Only me" until it was deleted, so a brand-new clip may not be public on TikTok the moment it posts.
 
 A rehearsal ("dry run") fills in everything and stops before the Post button. A platform is only marked `verified` in `src/platforms/` after it has posted for real.
 

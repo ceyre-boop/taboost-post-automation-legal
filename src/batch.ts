@@ -25,6 +25,8 @@ export interface Batch {
   id: string;
   createdAt: string;
   live: boolean;
+  /** Test post: once a live post is confirmed, take it straight back down. */
+  deleteAfter?: boolean;
   spaceSec: number;
   items: BatchItem[];
 }
@@ -76,6 +78,7 @@ export interface BatchInput {
   videos: { path: string; caption?: string }[];
   platforms: string[];
   live: boolean;
+  deleteAfter?: boolean;
   spaceSec?: number;
   sharedCaption?: string;
 }
@@ -96,6 +99,7 @@ export function buildBatch(input: BatchInput): Batch {
     id: batchId(),
     createdAt: new Date().toISOString(),
     live: input.live,
+    deleteAfter: input.live && !!input.deleteAfter,
     spaceSec: input.spaceSec ?? 60,
     items,
   };
@@ -113,6 +117,19 @@ export async function loggedInPlatforms(profile: Profile = defaultProfile): Prom
     }
     return out;
   }, "about:blank", profile);
+}
+
+/** Take down the post carrying this caption on one platform. */
+export async function removeOnPage(
+  ctx: import("playwright-core").BrowserContext,
+  platformId: string,
+  caption: string,
+  log: (m: string) => void,
+): Promise<void> {
+  const platform = getPlatform(platformId);
+  if (!platform.remove) throw new Error(`${platform.label} has no delete step yet. Delete it by hand.`);
+  const page = await pageFor(ctx, platform.host);
+  await platform.remove(page, caption, log);
 }
 
 async function postOnPage(
@@ -173,6 +190,18 @@ export async function runBatch(
           recordPost(item.platform, item.video, item.caption, batch.live ? "posted" : "dry-run");
           if (batch.live) lastPost[item.platform] = Date.now();
           log(`✓ ${name} → ${item.platform}`);
+          if (batch.live && batch.deleteAfter) {
+            // The post is up either way, so a failed delete is a note, not a failed post
+            // (a failed item would be posted a second time on resume).
+            try {
+              await removeOnPage(ctx, item.platform, item.caption, (m) => log(`   [${item.platform}] ${m}`));
+              item.note = "posted, then deleted";
+              recordPost(item.platform, item.video, item.caption, "deleted");
+            } catch (e) {
+              item.note = `POSTED BUT NOT DELETED: ${(e as Error).message.split("\n")[0]}`;
+              log(`✖ ${name} → ${item.platform} — ${item.note}`);
+            }
+          }
         } catch (e) {
           item.status = "error";
           item.note = (e as Error).message.split("\n")[0];

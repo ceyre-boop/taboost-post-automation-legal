@@ -1,7 +1,8 @@
 import type { Page } from "playwright-core";
 import type { Platform } from "./types.ts";
+import { needle, clickNamed, waitGone } from "./remove.ts";
 
-/** Instagram web "Create" flow. Selectors are best-effort and UNVERIFIED on a live account. */
+/** Instagram web "Create" flow. Posts and deletes for real (2026-11-18). */
 export const instagram: Platform = {
   id: "instagram",
   label: "Instagram",
@@ -59,5 +60,28 @@ export const instagram: Platform = {
     log("Share clicked. Waiting for Instagram to confirm...");
     await page.getByText(/has been shared|Post shared|Reel shared/i).first().waitFor({ state: "visible", timeout: 180_000 });
     log("Published.");
+  },
+
+  async remove(page, caption, log): Promise<void> {
+    const text = needle(caption);
+    await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded" });
+    const profile = page.locator('a[href^="/"]:has(img[alt*="profile picture"])').first();
+    await profile.waitFor({ state: "attached", timeout: 30_000 });
+    await page.goto("https://www.instagram.com" + (await profile.getAttribute("href")), { waitUntil: "domcontentloaded" });
+    // The grid shows no captions, so open the newest few posts and read each one.
+    const tiles = page.locator('a[href*="/p/"], a[href*="/reel/"]');
+    await tiles.first().waitFor({ state: "visible", timeout: 30_000 });
+    const links = (await tiles.evaluateAll((as) => as.map((a) => a.getAttribute("href")))).slice(0, 6);
+    for (const href of links) {
+      await page.goto("https://www.instagram.com" + href, { waitUntil: "domcontentloaded" });
+      if (!(await page.getByText(text).first().isVisible({ timeout: 8000 }).catch(() => false))) continue;
+      await page.locator('svg[aria-label="More options"]').first().click();
+      await clickNamed(page, /^Delete$/);
+      await clickNamed(page.locator('[role="dialog"]').last(), /^Delete$/);
+      await page.waitForTimeout(4000);
+      log("Deleted.");
+      return;
+    }
+    throw new Error("Could not find that post among your newest Instagram posts. Nothing deleted.");
   },
 };

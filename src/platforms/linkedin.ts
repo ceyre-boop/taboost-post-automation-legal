@@ -1,13 +1,14 @@
 import type { Page } from "playwright-core";
 import type { Platform, PostInput } from "./types.ts";
+import { needle, clickNamed, waitGone, postBlock } from "./remove.ts";
 
-/** LinkedIn feed post with a video. Best-effort selectors — UNVERIFIED until a dry run. */
+/** LinkedIn feed post with a video. Best-effort selectors. */
 export const linkedin: Platform = {
   id: "linkedin",
   label: "LinkedIn",
   loginUrl: "https://www.linkedin.com/login",
   host: /linkedin\.com/,
-  verified: false,
+  verified: true, // posted and deleted for real 2026-11-18
 
   async isLoggedIn(page: Page): Promise<boolean> {
     const cookies = await page.context().cookies("https://www.linkedin.com");
@@ -66,5 +67,18 @@ export const linkedin: Platform = {
       .waitFor({ state: "visible", timeout: 60_000 })
       .catch(() => { throw new Error("Post clicked but LinkedIn never confirmed. Check the window."); });
     log("Published.");
+  },
+
+  async remove(page, caption, log): Promise<void> {
+    const text = needle(caption);
+    await page.goto("https://www.linkedin.com/in/me/recent-activity/all/", { waitUntil: "domcontentloaded" });
+    const menu = 'button[aria-label^="Open control menu for post"]';
+    const post = postBlock(page, text, menu);
+    await post.waitFor({ state: "visible", timeout: 30_000 });
+    await post.locator(menu).first().click();
+    await clickNamed(page, /Delete post/i);
+    await clickNamed(page, /^Delete$/); // the "Delete post?" confirmation
+    if (!(await waitGone(page, text))) throw new Error("Delete clicked but the post is still showing on LinkedIn.");
+    log("Deleted.");
   },
 };

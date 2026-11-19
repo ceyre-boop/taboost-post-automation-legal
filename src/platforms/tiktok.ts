@@ -1,5 +1,6 @@
 import type { Page } from "playwright-core";
 import type { Platform, PostInput } from "./types.ts";
+import { needle, clickNamed, waitGone, postBlock } from "./remove.ts";
 
 const UPLOAD_URL = "https://www.tiktok.com/tiktokstudio/upload";
 
@@ -103,5 +104,21 @@ export const tiktok: Platform = {
       throw new Error(`Post clicked but TikTok never confirmed. Still on ${page.url()}. On screen: ${leftover.slice(0, 200).replace(/\n+/g, " / ") || "nothing"}`);
     }
     log(`Published (${confirmed}).`);
+  },
+
+  async remove(page, caption, log): Promise<void> {
+    const text = needle(caption);
+    await page.goto("https://www.tiktok.com/tiktokstudio/content", { waitUntil: "domcontentloaded" });
+    // Each row ends with four round action buttons; the last one is the "..." menu.
+    const action = '[data-tt^="components_ActionCell_Clickabl"]';
+    const row = postBlock(page, text, action);
+    await row.waitFor({ state: "visible", timeout: 30_000 });
+    await row.locator(action).last().click();
+    await clickNamed(page, /^Delete$/);
+    await page.waitForTimeout(1000);
+    // The confirmation has its own Delete button; the menu item is gone by now.
+    await page.getByRole("button", { name: /^Delete$/ }).last().click({ timeout: 15_000 });
+    if (!(await waitGone(page, text))) throw new Error("Delete clicked but the post is still showing on TikTok.");
+    log("Deleted.");
   },
 };

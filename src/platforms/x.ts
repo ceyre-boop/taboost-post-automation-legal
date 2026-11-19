@@ -1,14 +1,15 @@
 import type { Page } from "playwright-core";
 import type { Platform, PostInput } from "./types.ts";
+import { needle, clickNamed, waitGone } from "./remove.ts";
 
 /** X (Twitter) web composer. X exposes stable data-testid hooks, so this is the
- *  most reliable of the new adapters — but still UNVERIFIED until a live dry run. */
+ *  most reliable of the new adapters. */
 export const x: Platform = {
   id: "x",
   label: "X (Twitter)",
   loginUrl: "https://x.com/login",
   host: /(x|twitter)\.com/,
-  verified: false,
+  verified: true, // posted and deleted for real 2026-11-18
 
   async isLoggedIn(page: Page): Promise<boolean> {
     const cookies = await page.context().cookies("https://x.com");
@@ -55,5 +56,18 @@ export const x: Platform = {
       .waitFor({ state: "visible", timeout: 60_000 })
       .catch(() => { throw new Error("Post clicked but X never confirmed. Check the window."); });
     log("Published.");
+  },
+
+  async remove(page, caption, log): Promise<void> {
+    const text = needle(caption);
+    await page.goto("https://x.com/home", { waitUntil: "domcontentloaded" });
+    await page.locator('a[data-testid="AppTabBar_Profile_Link"]').click({ timeout: 30_000 });
+    const post = page.locator('article[data-testid="tweet"]').filter({ hasText: text }).first();
+    await post.waitFor({ state: "visible", timeout: 30_000 });
+    await post.locator('[data-testid="caret"]').first().click();
+    await clickNamed(page, /^Delete$/);
+    await page.locator('[data-testid="confirmationSheetConfirm"]').click({ timeout: 15_000 });
+    if (!(await waitGone(page, text))) throw new Error("Delete clicked but the post is still showing on X.");
+    log("Deleted.");
   },
 };

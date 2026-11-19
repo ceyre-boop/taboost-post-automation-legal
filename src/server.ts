@@ -89,7 +89,7 @@ async function openLogin(platformId: string) {
   }, p.loginUrl);
 }
 
-function runJob(video: string, caption: string, platformIds: string[], live: boolean, profile: Profile = defaultProfile): Job {
+function runJob(video: string, caption: string, platformIds: string[], live: boolean, profile: Profile = defaultProfile, deleteAfter = false): Job {
   const job: Job = { id: Date.now().toString(36), status: "running", log: [], results: {} };
   jobs.set(job.id, job);
   const log = (m: string) => job.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
@@ -103,6 +103,14 @@ function runJob(video: string, caption: string, platformIds: string[], live: boo
           if (!(await p.isLoggedIn(page))) throw new Error(`not logged in to ${p.label}. Click Connect first.`);
           await page.bringToFront();
           await p.post(page, { video, caption, dryRun: !live }, (m) => log(`  ${m}`));
+          if (live && deleteAfter) {
+            try {
+              if (!p.remove) throw new Error(`${p.label} has no delete step yet`);
+              await p.remove(page, caption, (m) => log(`  ${m}`));
+            } catch (e) {
+              log(`  ✖ POSTED BUT NOT DELETED: ${(e as Error).message.split("\n")[0]}`);
+            }
+          }
         }, "about:blank", profile);
         job.results[id] = live ? "posted" : "dry-run";
       } catch (e) {
@@ -121,8 +129,8 @@ interface BatchRun { batch: Batch; log: string[]; done: boolean; }
 const batches = new Map<string, BatchRun>();
 let batchRunning = false; // one batch at a time, so spacing is never defeated by overlap
 
-function startBatch(videos: { path: string; caption?: string }[], platformIds: string[], live: boolean, spaceSec: number, sharedCaption: string, profile: Profile = defaultProfile): BatchRun {
-  const batch = buildBatch({ videos, platforms: platformIds, live, spaceSec, sharedCaption });
+function startBatch(videos: { path: string; caption?: string }[], platformIds: string[], live: boolean, spaceSec: number, sharedCaption: string, profile: Profile = defaultProfile, deleteAfter = false): BatchRun {
+  const batch = buildBatch({ videos, platforms: platformIds, live, deleteAfter, spaceSec, sharedCaption });
   const entry: BatchRun = { batch, log: [], done: false };
   batches.set(batch.id, entry);
   batchRunning = true;
@@ -225,7 +233,7 @@ const server = createServer(async (req, res) => {
       mkdirSync(UPLOADS, { recursive: true });
       const dest = join(UPLOADS, `${Date.now()}${extname(file.name) || ".mp4"}`);
       writeFileSync(dest, Buffer.from(await file.arrayBuffer()));
-      const job = runJob(dest, String(form.get("caption") ?? ""), platformIds, form.get("live") === "on", profileFor(req, url));
+      const job = runJob(dest, String(form.get("caption") ?? ""), platformIds, form.get("live") === "on", profileFor(req, url), form.get("deleteAfter") === "on");
       return json(res, 200, { id: job.id });
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/jobs/")) {
@@ -252,7 +260,7 @@ const server = createServer(async (req, res) => {
         videos.push({ path: dest, caption: per || undefined });
       }
       if (!videos.length) return json(res, 400, { error: "pick at least one video" });
-      const entry = startBatch(videos, platformIds, form.get("live") === "on", Number(form.get("space")) || 60, String(form.get("caption") ?? ""), profileFor(req, url));
+      const entry = startBatch(videos, platformIds, form.get("live") === "on", Number(form.get("space")) || 60, String(form.get("caption") ?? ""), profileFor(req, url), form.get("deleteAfter") === "on");
       return json(res, 200, { id: entry.batch.id });
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/batches/")) {

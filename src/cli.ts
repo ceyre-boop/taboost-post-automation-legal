@@ -4,7 +4,8 @@ import { attach, launchChrome } from "./chrome.ts";
 import { sleep } from "./sleep.ts";
 import { CDP_PORT, PROFILE_DIR } from "./config.ts";
 import { getPlatform } from "./platforms/index.ts";
-import { buildBatch, runBatch, loadBatch, listBatches, videosInDir, loggedInPlatforms } from "./batch.ts";
+import { buildBatch, runBatch, loadBatch, listBatches, videosInDir, loggedInPlatforms, removeOnPage } from "./batch.ts";
+import { withBrowser } from "./browser.ts";
 
 const log = (m: string) => console.log(`[${new Date().toLocaleTimeString()}] ${m}`);
 
@@ -64,16 +65,39 @@ async function cmdPost(): Promise<void> {
   }
 
   const live = has("live");
+  const deleteAfter = has("delete-after");
+  if (deleteAfter && !live) throw new Error("--delete-after only makes sense with --live (a rehearsal posts nothing).");
+  if (deleteAfter && (arg("caption") ?? "").trim().length < 8) throw new Error("--delete-after needs a --caption of at least 8 characters: the post is found again by its caption.");
   const spaceSec = Number(arg("space")) || 60;
   const sharedCaption = arg("caption") ?? "";
 
   const batch = buildBatch({
     videos: videoPaths.map((path) => ({ path })),
-    platforms, live, spaceSec, sharedCaption,
+    platforms, live, deleteAfter, spaceSec, sharedCaption,
   });
   log(`${live ? "LIVE" : "DRY RUN"} ${batch.id}: ${videoPaths.length} video(s) × ${platforms.length} platform(s) = ${batch.items.length} posts${live ? `, ~${spaceSec}s apart` : ""}.`);
   const done = await runBatch(batch, log);
-  if (done.items.some((i) => i.status === "error")) process.exitCode = 1; // so callers (approve.ts) see failure
+  if (done.items.some((i) => i.status === "error" || i.note?.startsWith("POSTED BUT NOT DELETED"))) process.exitCode = 1; // so callers (approve.ts) see failure
+}
+
+/** delete: take down the post with this caption on each platform. */
+async function cmdDelete(): Promise<void> {
+  const caption = arg("caption") ?? "";
+  const platformArg = arg("platform");
+  if (!caption || !platformArg) throw new Error('usage: delete --caption "the post\x27s caption" --platform tiktok,x,...');
+  const ids = platformArg.split(",").map((s) => s.trim()).filter(Boolean);
+  ids.forEach(getPlatform);
+  await withBrowser(async (ctx) => {
+    await Promise.all(ids.map(async (id) => {
+      try {
+        await removeOnPage(ctx, id, caption, (m) => log(`   [${id}] ${m}`));
+        log(`✓ deleted on ${id}`);
+      } catch (e) {
+        process.exitCode = 1;
+        log(`✖ ${id} — ${(e as Error).message.split("\n")[0]}`);
+      }
+    }));
+  });
 }
 
 async function cmdBatchResume(id?: string): Promise<void> {
@@ -100,6 +124,7 @@ try {
   if (cmd === "login") await cmdLogin(platformId);
   else if (cmd === "status") await cmdStatus(platformId);
   else if (cmd === "post") await cmdPost();
+  else if (cmd === "delete") await cmdDelete();
   else if (cmd === "batch:resume") await cmdBatchResume(maybeId);
   else if (cmd === "batch:list") cmdBatchList();
   else {
@@ -108,11 +133,13 @@ try {
   node src/cli.ts status [--platform tiktok]
   node src/cli.ts post   --dir <folder> | --video <file> [--video <file> ...]
                          [--caption "text"] [--platform tiktok,instagram,youtube]
-                         [--live] [--space 60]
+                         [--live] [--delete-after] [--space 60]
+  node src/cli.ts delete --caption "text" --platform tiktok,x
   node src/cli.ts batch:list
   node src/cli.ts batch:resume <id>
 
-post is a DRY RUN unless --live. No --platform = every logged-in platform.
+post is a DRY RUN unless --live. --live --delete-after is a test post: it goes up, then comes straight down.
+delete finds the post by the first line of its caption and removes nothing it cannot match.
 Per-video caption: put "<name>.txt" next to "<name>.mp4". Otherwise --caption applies to all.`);
     process.exit(cmd ? 1 : 0);
   }

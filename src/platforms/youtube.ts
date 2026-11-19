@@ -1,13 +1,14 @@
 import type { Page } from "playwright-core";
 import type { Platform } from "./types.ts";
+import { needle, clickNamed, waitGone } from "./remove.ts";
 
-/** YouTube Studio upload flow. Selectors are best-effort and UNVERIFIED on a live channel. */
+/** YouTube Studio upload flow. Posts and deletes for real (2026-11-18). */
 export const youtube: Platform = {
   id: "youtube",
   label: "YouTube",
   loginUrl: "https://studio.youtube.com/",
   host: /youtube\.com/,
-  verified: false, // rehearses cleanly (2026-11-18); not yet posted for real
+  verified: true, // posted and deleted for real 2026-11-18
 
   async isLoggedIn(page: Page): Promise<boolean> {
     const cookies = await page.context().cookies("https://www.youtube.com");
@@ -71,5 +72,26 @@ export const youtube: Platform = {
     log("Publish clicked. Waiting for YouTube to confirm...");
     await page.getByText(/Video published|Published/i).first().waitFor({ state: "visible", timeout: 120_000 });
     log("Published.");
+  },
+
+  async remove(page, caption, log): Promise<void> {
+    const text = needle(caption);
+    await page.goto("https://studio.youtube.com/", { waitUntil: "domcontentloaded" }).catch(() => {}); // Studio redirects mid-load
+    await page.waitForURL(/\/channel\/[^/?]+/, { timeout: 30_000 });
+    const channel = page.url().match(/\/channel\/([^/?]+)/)![1];
+    // A short vertical clip is filed under Shorts, a longer one under Videos.
+    const row = page.locator("ytcp-video-row").filter({ hasText: text }).first();
+    for (const list of ["short", "upload"]) {
+      await page.goto(`https://studio.youtube.com/channel/${channel}/videos/${list}`, { waitUntil: "domcontentloaded" });
+      if (await row.isVisible({ timeout: 12_000 }).catch(() => false)) break;
+    }
+    await row.waitFor({ state: "visible", timeout: 5_000 });
+    await row.hover();
+    await row.locator('ytcp-icon-button[aria-label="Options"], [aria-label="Options"]').first().click();
+    await page.locator('tp-yt-paper-item:has-text("Delete forever")').first().click({ timeout: 15_000 });
+    await page.locator("ytcp-checkbox-lit#confirm-checkbox, #confirm-checkbox").first().click({ timeout: 15_000 });
+    await page.locator("#confirm-button").first().click({ timeout: 15_000 });
+    if (!(await waitGone(page, text))) throw new Error("Delete clicked but the video is still listed on YouTube.");
+    log("Deleted.");
   },
 };

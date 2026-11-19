@@ -1,14 +1,15 @@
 import type { Page } from "playwright-core";
 import type { Platform, PostInput } from "./types.ts";
+import { needle, clickNamed, waitGone } from "./remove.ts";
 
 /** Threads web composer. Threads uses an Instagram-linked login. Best-effort
- *  selectors — UNVERIFIED until a dry run. */
+ *  selectors. */
 export const threads: Platform = {
   id: "threads",
   label: "Threads",
   loginUrl: "https://www.threads.net/login",
   host: /threads\.(net|com)/,
-  verified: false,
+  verified: true, // posted and deleted for real 2026-11-18
 
   async isLoggedIn(page: Page): Promise<boolean> {
     for (const url of ["https://www.threads.net", "https://www.threads.com"]) {
@@ -55,5 +56,19 @@ export const threads: Platform = {
       .waitFor({ state: "visible", timeout: 60_000 })
       .catch(() => { throw new Error("Post clicked but Threads never confirmed. Check the window."); });
     log("Published.");
+  },
+
+  async remove(page, caption, log): Promise<void> {
+    const text = needle(caption);
+    await page.goto("https://www.threads.com/", { waitUntil: "domcontentloaded" });
+    await page.locator('a:has-text("Profile"), a:has(svg[aria-label="Profile"])').first().click({ timeout: 30_000 });
+    await page.waitForURL(/\/@[^/]+\/?$/, { timeout: 30_000 });
+    const post = page.locator("[data-pressable-container]").filter({ hasText: text }).first();
+    await post.waitFor({ state: "visible", timeout: 30_000 });
+    await post.locator('[aria-haspopup="menu"], svg[aria-label="More"]').first().click();
+    await clickNamed(page, /^Delete$/);
+    await clickNamed(page.locator('[role="dialog"]').last(), /^Delete$/);
+    if (!(await waitGone(page, text))) throw new Error("Delete clicked but the post is still showing on Threads.");
+    log("Deleted.");
   },
 };
