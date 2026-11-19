@@ -73,7 +73,11 @@ export const facebook: Platform = {
     await page.goto("https://www.facebook.com/me", { waitUntil: "domcontentloaded" });
     const menu = '[aria-label^="Actions for this post"]';
     const post = postBlock(page, text, menu);
-    await post.waitFor({ state: "visible", timeout: 30_000 });
+    // A new video can take a minute or two to show on the profile while Facebook processes it.
+    for (let i = 0; i < 8 && !(await post.isVisible({ timeout: 20_000 }).catch(() => false)); i++) {
+      await page.reload({ waitUntil: "domcontentloaded" });
+    }
+    await post.waitFor({ state: "visible", timeout: 20_000 });
     await post.locator(menu).first().click();
     await clickNamed(page, /Move to (trash|Recycle bin)|^Delete/i);
     await clickNamed(page.locator('[role="dialog"]').last(), /^(Move|Delete)$/);

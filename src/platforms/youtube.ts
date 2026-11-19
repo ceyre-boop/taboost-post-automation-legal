@@ -70,7 +70,11 @@ export const youtube: Platform = {
     }
     await done.click();
     log("Publish clicked. Waiting for YouTube to confirm...");
-    await page.getByText(/Video published|Published/i).first().waitFor({ state: "visible", timeout: 120_000 });
+    // Either the "Video published" box appears, or the upload dialog simply closes.
+    await Promise.any([
+      page.getByText(/Video published|Published/i).first().waitFor({ state: "visible", timeout: 120_000 }),
+      page.locator("ytcp-uploads-dialog #done-button").first().waitFor({ state: "hidden", timeout: 120_000 }),
+    ]);
     log("Published.");
   },
 
