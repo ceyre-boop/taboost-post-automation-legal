@@ -3,140 +3,683 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Northbound Poster</title>
+<title>Post Everywhere</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f5bd5'/%3E%3Cpath d='M9 22 16 9l7 13-7-4z' fill='%23fff'/%3E%3C/svg%3E">
 <style>
-  :root { --bg:#0a0e1a; --card:#121829; --line:#232c47; --text:#e8eaf0; --muted:#8b91a3; --accent:#6f9bff; --ok:#2ecc71; --bad:#ff5c5c; }
-  * { box-sizing:border-box }
-  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-  main { max-width:960px; margin:0 auto; padding:32px 16px 64px }
-  h1 { margin:0 0 4px; font-size:26px } .sub { color:var(--muted); margin:0 0 28px }
-  h2 { font-size:15px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:28px 0 12px }
-  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px }
-  .card .name { font-weight:600; font-size:17px } .card .st { color:var(--muted); font-size:13px; margin:4px 0 12px }
-  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; background:var(--muted) }
-  .dot.ok { background:var(--ok) } .dot.bad { background:var(--bad) }
-  button { background:var(--accent); color:#001; border:0; border-radius:8px; padding:9px 16px; font-weight:600; cursor:pointer; font-size:14px }
-  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line) }
-  button:disabled { opacity:.5; cursor:default }
-  form.post { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; display:grid; gap:14px }
-  textarea, input[type=file] { width:100%; background:#0a0e1a; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; font:inherit }
-  textarea { min-height:110px; resize:vertical }
-  .row { display:flex; flex-wrap:wrap; gap:16px; align-items:center }
-  label.chk { display:flex; gap:6px; align-items:center; cursor:pointer }
-  pre.log { background:#0a0c12; border:1px solid var(--line); border-radius:12px; padding:14px; min-height:80px; white-space:pre-wrap; font-size:13px; color:#cfd3dd; max-height:360px; overflow:auto }
-  table { width:100%; border-collapse:collapse; font-size:13px } td, th { padding:8px 6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top } th { color:var(--muted); font-weight:500 }
-  .pill { padding:2px 8px; border-radius:999px; font-size:12px; background:#243; color:var(--ok) } .pill.err { background:#3a1f1f; color:var(--bad) } .pill.dry { background:#2a2f3d; color:var(--muted) }
-  .warn { color:#ffb454; font-size:13px }
-  .beta { font-size:11px; background:#3a2f1f; color:#ffb454; padding:1px 7px; border-radius:999px; margin-left:6px; vertical-align:middle }
+  /* One calm accent, two themes. The app follows the Mac: light in light mode, dark in dark. */
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f1f3f6; --line: #e3e6ec; --line-strong: #cfd4dd;
+    --ink: #14171c; --ink-2: #4b5360; --ink-3: #7b8493;
+    --accent: #4f5bd5; --accent-ink: #ffffff; --accent-soft: #eceefb; --accent-strong: #3f49b8;
+    --ok: #17804a; --ok-soft: #e4f4eb; --warn: #9a6400; --warn-soft: #fdf1d8; --bad: #c0362c; --bad-soft: #fbe9e7; --info: #2f6bd6; --info-soft: #e6effd;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
+    --radius: 14px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1014; --panel: #171a20; --panel-2: #1d2128; --line: #272c35; --line-strong: #363c48;
+      --ink: #eef0f4; --ink-2: #b3bac6; --ink-3: #7f8896;
+      --accent: #8b95f5; --accent-ink: #0e1014; --accent-soft: #232745; --accent-strong: #a5adf8;
+      --ok: #5fd195; --ok-soft: #13301f; --warn: #f0be5a; --warn-soft: #33270d; --bad: #ff8a80; --bad-soft: #3a1815; --info: #8bb4ff; --info-soft: #14233d;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .35);
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  h1, h2, h3 { margin: 0; font-weight: 650; letter-spacing: -0.015em; }
+  h1 { font-size: 26px; line-height: 1.2; }
+  h2 { font-size: 17px; }
+  p { margin: 0; }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+  .muted { color: var(--ink-2); }
+  .small { font-size: 13px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+  /* ---- layout ---- */
+  .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+  .rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 4px; padding: 20px 14px; border-right: 1px solid var(--line); background: var(--panel); }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
+  .mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); display: grid; place-items: center; flex: none; }
+  .mark svg { width: 16px; height: 16px; }
+  .brand b { font-size: 15.5px; letter-spacing: -0.01em; }
+  .nav { display: grid; gap: 2px; }
+  .nav button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--ink-2); cursor: pointer; text-align: left; font-weight: 500; }
+  .nav button:hover { background: var(--panel-2); color: var(--ink); }
+  .nav button[aria-current="page"] { background: var(--accent-soft); color: var(--accent-strong); }
+  .nav svg { width: 18px; height: 18px; flex: none; }
+  .nav .count { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 650; text-align: center; }
+  .rail-foot { margin-top: auto; padding: 10px 8px 0; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); }
+  main { padding: 34px clamp(18px, 4vw, 48px) 80px; min-width: 0; }
+  .page { max-width: 980px; margin: 0 auto; }
+  .head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+  .head p { margin-top: 4px; }
+  @media (max-width: 760px) {
+    .shell { grid-template-columns: 1fr; }
+    .rail { position: static; height: auto; flex-direction: row; align-items: center; padding: 10px 12px; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+    .brand { padding: 0 8px 0 0; } .brand b { display: none; }
+    .nav { grid-auto-flow: column; } .nav button span.lbl { display: none; }
+    .rail-foot { display: none; }
+  }
+
+  /* ---- pieces ---- */
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .card.pad { padding: 20px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink); font-weight: 600; cursor: pointer; white-space: nowrap; transition: transform .08s ease, background .15s ease, border-color .15s ease; }
+  .btn:hover { background: var(--panel-2); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+  .btn.quiet { border-color: transparent; background: transparent; color: var(--ink-2); }
+  .btn.quiet:hover { background: var(--panel-2); color: var(--ink); }
+  .btn.sm { min-height: 32px; padding: 0 11px; font-size: 13.5px; border-radius: 8px; }
+  .btn.lg { min-height: 48px; padding: 0 22px; font-size: 16px; border-radius: 12px; }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; transform: none; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--panel-2); color: var(--ink-2); white-space: nowrap; }
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.bad { background: var(--bad-soft); color: var(--bad); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .pill.info { background: var(--info-soft); color: var(--info); }
+  .pill.busy::before { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  .badge { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-weight: 700; font-size: 14px; letter-spacing: -0.02em; color: #fff; flex: none; background: #5b6474; }
+  .badge.sm { width: 26px; height: 26px; border-radius: 8px; font-size: 11px; }
+  .b-tiktok { background: #16181d; } .b-instagram { background: #c13584; } .b-youtube { background: #d93025; } .b-x { background: #2b3038; }
+  .b-facebook { background: #1877f2; } .b-linkedin { background: #0a66c2; } .b-threads { background: #3a3f4a; }
+  .notice { display: flex; gap: 12px; padding: 14px 16px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); border: 1px solid transparent; }
+  .notice.bad { background: var(--bad-soft); color: var(--bad); }
+  .notice b { display: block; }
+  .notice .muted { color: inherit; opacity: .9; }
+
+  /* ---- accounts ---- */
+  .accounts { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .acct { display: flex; align-items: center; gap: 12px; padding: 14px; }
+  .acct .who { min-width: 0; flex: 1; }
+  .acct .who b { display: block; }
+  .acct .acts { display: flex; gap: 6px; }
+  .skeleton { height: 68px; border-radius: var(--radius); background: linear-gradient(90deg, var(--panel) 0%, var(--panel-2) 50%, var(--panel) 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border: 1px solid var(--line); }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  /* ---- post ---- */
+  .drop { display: grid; place-items: center; gap: 6px; padding: 34px 20px; border: 2px dashed var(--line-strong); border-radius: var(--radius); background: var(--panel); text-align: center; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop svg { width: 34px; height: 34px; color: var(--accent); }
+  .drop b { font-size: 16px; }
+  .clips { display: grid; gap: 10px; margin-top: 14px; }
+  .clip { display: grid; grid-template-columns: 88px 1fr auto; gap: 14px; padding: 12px; align-items: start; }
+  .clip video { width: 88px; height: 118px; object-fit: cover; border-radius: 10px; background: #000; }
+  .clip .meta { min-width: 0; display: grid; gap: 8px; }
+  .clip .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  textarea, .field { width: 100%; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--panel); resize: vertical; min-height: 44px; }
+  textarea:focus, .field:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+  .section { margin-top: 26px; }
+  .section > h2 { margin-bottom: 4px; }
+  .section > .muted { margin-bottom: 12px; }
+  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+  .switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .switch i { width: 40px; height: 24px; border-radius: 999px; background: var(--line-strong); position: relative; transition: background .15s ease; flex: none; }
+  .switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s ease; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .switch input:checked + i { background: var(--accent); }
+  .switch input:checked + i::after { transform: translateX(16px); }
+  .switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--panel); cursor: pointer; font-weight: 600; user-select: none; }
+  .chip input { position: absolute; opacity: 0; pointer-events: none; }
+  .chip:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+  .chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .chip.off { opacity: .6; cursor: default; border-style: dashed; font-weight: 500; }
+  .chip.off button { border: 0; background: none; color: var(--accent-strong); font-weight: 650; cursor: pointer; padding: 0 0 0 2px; }
+  .seg { display: inline-flex; padding: 3px; border-radius: 11px; background: var(--panel-2); border: 1px solid var(--line); flex-wrap: wrap; }
+  .seg label { cursor: pointer; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg span { display: block; padding: 6px 13px; border-radius: 8px; font-weight: 600; font-size: 14px; color: var(--ink-2); }
+  .seg input:checked + span { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .seg input:focus-visible + span { outline: 2px solid var(--accent); }
+  .bar { position: sticky; bottom: 14px; margin-top: 28px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .bar .sum { flex: 1; min-width: 180px; }
+
+  /* ---- progress ---- */
+  .meter { height: 8px; border-radius: 999px; background: var(--panel-2); overflow: hidden; margin: 14px 0 4px; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 999px; transition: width .4s ease; }
+  .gridwrap { overflow-x: auto; }
+  table.grid { width: 100%; border-collapse: separate; border-spacing: 0; }
+  table.grid th, table.grid td { padding: 10px 9px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  table.grid th:first-child { padding-left: 16px; } table.grid td:last-child, table.grid th:last-child { padding-right: 16px; }
+  table.grid .pill { font-size: 12px; padding: 3px 9px; }
+  table.grid thead th { font-size: 12.5px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+  table.grid tbody tr:last-child td, table.grid tbody tr:last-child th { border-bottom: 0; }
+  table.grid th[scope=row] { font-weight: 600; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cellbtn { border: 0; background: none; padding: 0; cursor: pointer; }
+  .fails { display: grid; gap: 10px; margin-top: 16px; }
+  .fail { padding: 14px 16px; border-left: 4px solid var(--bad); }
+  .fail .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .fail details { margin-top: 8px; }
+  .fail summary { cursor: pointer; color: var(--ink-3); font-size: 13px; }
+  .fail code { display: block; margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; color: var(--ink-2); }
+  .empty { padding: 44px 20px; text-align: center; }
+  .empty svg { width: 36px; height: 36px; color: var(--ink-3); margin-bottom: 8px; }
+
+  /* ---- history ---- */
+  .day { margin: 22px 0 8px; font-size: 12.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+  .hrow { display: grid; grid-template-columns: 26px minmax(0, 1.3fr) minmax(0, 2fr) 92px 74px 132px; gap: 12px; align-items: center; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  .hrow .pill { justify-self: start; }
+  .hrow a, .hrow time { justify-self: end; }
+  .hrow:last-child { border-bottom: 0; }
+  .hrow .cap { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hrow .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hrow time { color: var(--ink-3); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .hrow a { color: var(--accent-strong); font-weight: 600; text-decoration: none; white-space: nowrap; font-size: 13.5px; }
+  .hrow a:hover { text-decoration: underline; }
+  @media (max-width: 760px) { .hrow { grid-template-columns: 26px 1fr auto; } .hrow .cap, .hrow time, .hrow a, .hrow > span:last-child:empty { display: none; } }
+
+  /* ---- first run ---- */
+  .onboard { position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow: auto; display: grid; place-items: start center; padding: clamp(24px, 7vh, 80px) 20px 60px; }
+  .onboard .inner { width: min(760px, 100%); }
+  .steps { display: flex; gap: 8px; margin-bottom: 28px; }
+  .steps i { height: 4px; flex: 1; border-radius: 999px; background: var(--line-strong); }
+  .steps i.on { background: var(--accent); }
+  .hero-mark { width: 56px; height: 56px; border-radius: 16px; background: var(--accent); display: grid; place-items: center; margin-bottom: 20px; }
+  .hero-mark svg { width: 30px; height: 30px; }
+  .onboard h1 { font-size: clamp(28px, 4.2vw, 40px); }
+  .onboard .lede { font-size: 17px; color: var(--ink-2); margin: 10px 0 26px; max-width: 56ch; }
+  .promises { display: grid; gap: 10px; margin-bottom: 30px; }
+  .promise { display: flex; gap: 14px; padding: 14px 16px; align-items: flex-start; }
+  .promise svg { width: 22px; height: 22px; color: var(--accent); flex: none; margin-top: 1px; }
+  .onboard .foot { display: flex; align-items: center; gap: 12px; margin-top: 26px; flex-wrap: wrap; }
+
+  /* ---- dialog + toast ---- */
+  dialog { border: 1px solid var(--line); border-radius: 18px; background: var(--panel); color: var(--ink); padding: 0; width: min(460px, calc(100vw - 32px)); box-shadow: 0 24px 80px rgba(0,0,0,.35); }
+  dialog::backdrop { background: rgba(10, 12, 16, .55); backdrop-filter: blur(2px); }
+  dialog .body { padding: 22px 22px 6px; }
+  dialog .body p { margin-top: 8px; }
+  dialog ul { margin: 12px 0 0; padding-left: 18px; color: var(--ink-2); }
+  dialog .acts { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 22px 20px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 40; padding: 11px 16px; border-radius: 12px; background: var(--ink); color: var(--bg); font-weight: 600; box-shadow: var(--shadow); max-width: min(560px, calc(100vw - 32px)); }
 </style>
 </head>
 <body>
-<main>
-  <h1>Northbound Poster</h1>
-  <p class="sub">One video, every platform. Sign in once, then post from here.</p>
 
-  <h2>1. Sign in to your accounts</h2>
-  <div class="cards" id="cards"><div class="card">Checking your accounts…</div></div>
+<!-- FIRST RUN: welcome → connect → done. Shown until setup has been finished once. -->
+<div class="onboard" id="onboard" hidden>
+  <div class="inner">
+    <div class="steps" aria-hidden="true"><i id="st1" class="on"></i><i id="st2"></i><i id="st3"></i></div>
 
-  <h2>2. Add your video</h2>
-  <form class="post" id="form">
-    <input type="file" name="videos" accept="video/mp4,video/quicktime,video/*" multiple required>
-    <div id="files"></div>
-    <textarea name="caption" placeholder="Write the caption. On YouTube the first line becomes the title."></textarea>
-    <div class="row" id="targets"></div>
-    <div class="row">
-      <label class="chk"><input type="checkbox" name="live"> <b>Post for real</b> <span class="warn">Leave this off to rehearse: it fills everything in and stops before the Post button.</span></label>
-      <label class="chk" id="delwrap" hidden><input type="checkbox" name="deleteAfter"> <b>Test post</b> <span class="warn">Post it, then delete it straight away. Needs a caption so the post can be found again.</span></label>
-      <label class="chk">Wait <input type="number" name="space" value="60" min="10" max="900" style="width:60px"> seconds between posts to the same account</label>
+    <section id="ob-welcome">
+      <div class="hero-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 25 16 6l9 19-9-6z" fill="#fff"/></svg></div>
+      <h1>Post one video everywhere.</h1>
+      <p class="lede">Add a clip once and Post Everywhere puts it on every account you choose. Setup takes about two minutes.</p>
+      <div class="promises">
+        <div class="card promise"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><div><b>You sign in yourself.</b><p class="muted">Each platform opens in the app's own Chrome window and you log in there. The app never asks for, sees or stores a password.</p></div></div>
+        <div class="card promise"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><div><b>It posts the way you would.</b><p class="muted">It uses each site's normal upload page, with a pause between posts so your accounts stay in good standing.</p></div></div>
+        <div class="card promise"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.2 7.6 8 9 4.800-1.400 8-4.500 8-9V6z"/></svg><div><b>Everything stays on this Mac.</b><p class="muted">Your clips, your sign-ins and your history live in your own app folder. Nothing is sent to us.</p></div></div>
+      </div>
+      <div class="foot"><button class="btn primary lg" id="ob-start">Get started</button></div>
+    </section>
+
+    <section id="ob-connect" hidden>
+      <h1>Connect your accounts.</h1>
+      <p class="lede">Click Connect, sign in inside the Chrome window that opens, then come back here. Connect as many as you like; you can add more later.</p>
+      <div id="ob-chrome"></div>
+      <div class="accounts" id="ob-accounts"></div>
+      <div class="foot">
+        <button class="btn primary lg" id="ob-next" disabled>Continue</button>
+        <button class="btn quiet" id="ob-back">Back</button>
+        <span class="muted small" id="ob-hint">Connect at least one account to continue.</span>
+      </div>
+    </section>
+
+    <section id="ob-done" hidden>
+      <div class="hero-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.500 4.500L19 7.500"/></svg></div>
+      <h1>You're all set.</h1>
+      <p class="lede" id="ob-done-text"></p>
+      <div class="card promise" style="margin-bottom:26px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4.500l3 2"/></svg><div><b>Try a preview first.</b><p class="muted">Preview fills in everything on each site and stops right before the Post button, so you can see it work without anything going public.</p></div></div>
+      <div class="foot"><button class="btn primary lg" id="ob-finish">Make my first post</button></div>
+    </section>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="brand"><span class="mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 25 16 6l9 19-9-6z" fill="#fff"/></svg></span><b>Post Everywhere</b></div>
+    <nav class="nav" aria-label="Screens">
+      <button data-go="post"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">Post</span></button>
+      <button data-go="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="7" rx="1.500"/><rect x="14" y="4" width="7" height="7" rx="1.500"/><rect x="3" y="14" width="7" height="7" rx="1.500"/><rect x="14" y="14" width="7" height="7" rx="1.500"/></svg><span class="lbl">Progress</span><span class="count" id="nav-live" hidden></span></button>
+      <button data-go="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="lbl">History</span></button>
+      <button data-go="accounts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.500-4 4.500-5.500 8-5.500s6.500 1.500 8 5.500"/></svg><span class="lbl">Accounts</span></button>
+    </nav>
+    <div class="rail-foot">Made by Northbound</div>
+  </aside>
+
+  <main>
+    <!-- POST -->
+    <div class="page" id="v-post" hidden>
+      <div class="head"><div><h1>New post</h1><p class="muted">Add your clips, write the caption, choose where they go.</p></div></div>
+
+      <label class="drop" id="drop" tabindex="0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V5m0 0-4 4m4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        <b>Drag videos here</b>
+        <span class="muted">or click to choose them. MP4, MOV, M4V or WebM.</span>
+        <input type="file" id="pick" accept="video/mp4,video/quicktime,video/x-m4v,video/webm,.mp4,.mov,.m4v,.webm" multiple hidden>
+      </label>
+
+      <div class="section" id="caption-section" hidden>
+        <div class="row" style="justify-content:space-between">
+          <h2 id="clip-count">Your clips</h2>
+          <label class="switch"><input type="checkbox" id="shared-toggle"><i></i><span>One caption for every clip</span></label>
+        </div>
+        <div id="shared-box" hidden style="margin-top:10px"><textarea id="shared-caption" rows="3" placeholder="Write one caption. Every clip uses it."></textarea></div>
+        <div class="clips" id="clips"></div>
+      </div>
+
+      <div class="section">
+        <h2>Where it goes</h2>
+        <p class="muted">Only connected accounts can be picked.</p>
+        <div class="chips" id="chips"><div class="skeleton" style="width:100%;height:40px"></div></div>
+      </div>
+
+      <div class="section">
+        <h2>Time between posts</h2>
+        <p class="muted">A pause between posts to the same account. It keeps your accounts looking like a person is posting, so it's on by default.</p>
+        <div class="seg" id="spacing" role="radiogroup" aria-label="Time between posts">
+          <label><input type="radio" name="space" value="30"><span>30 sec</span></label>
+          <label><input type="radio" name="space" value="60"><span>1 min</span></label>
+          <label><input type="radio" name="space" value="120"><span>2 min</span></label>
+          <label><input type="radio" name="space" value="300"><span>5 min</span></label>
+          <label><input type="radio" name="space" value="0"><span>Off</span></label>
+        </div>
+        <p class="small" id="space-warn" hidden style="color:var(--warn);margin-top:8px">With spacing off, several posts can hit the same account seconds apart. That can get an account flagged.</p>
+      </div>
+
+      <div class="card bar">
+        <div class="sum"><b id="sum-line">Add a clip to begin.</b><div class="muted small" id="sum-sub"></div></div>
+        <button class="btn" id="btn-preview" disabled title="Fills in everything and stops before the Post button">Preview</button>
+        <button class="btn primary" id="btn-post" disabled>Post now</button>
+      </div>
     </div>
-    <div class="row"><button type="submit" id="go">Rehearse</button><span id="hint" class="warn"></span></div>
-  </form>
 
-  <h2>3. Watch it go</h2>
-  <div id="grid"><span class="sub">Nothing is posting right now.</span></div>
+    <!-- PROGRESS -->
+    <div class="page" id="v-progress" hidden>
+      <div class="head"><div><h1 id="pg-title">Progress</h1><p class="muted" id="pg-sub"></p></div><div class="row"><button class="btn" id="pg-retry" hidden>Try failed again</button><button class="btn primary" id="pg-new" hidden>New post</button></div></div>
+      <div id="pg-empty" class="card empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="7" rx="1.500"/><rect x="14" y="4" width="7" height="7" rx="1.500"/><rect x="3" y="14" width="7" height="7" rx="1.500"/><rect x="14" y="14" width="7" height="7" rx="1.500"/></svg><h2>Nothing is posting right now</h2><p class="muted">Start a preview or a post and you'll see every clip and platform here, live.</p></div>
+      <div id="pg-body" hidden>
+        <div class="card pad">
+          <div class="row" style="justify-content:space-between"><b id="pg-count"></b><span class="pill" id="pg-mode"></span></div>
+          <div class="meter"><i id="pg-bar"></i></div>
+          <div class="muted small" id="pg-now"></div>
+        </div>
+        <div class="card gridwrap" style="margin-top:14px"><table class="grid" id="pg-grid"></table></div>
+        <div class="fails" id="pg-fails"></div>
+      </div>
+    </div>
 
-  <h2>What it is doing</h2>
-  <pre class="log" id="log">Idle.</pre>
-</main>
+    <!-- HISTORY -->
+    <div class="page" id="v-history" hidden>
+      <div class="head"><div><h1>History</h1><p class="muted">What went where, and when. Open takes you to your own posts on that platform.</p></div>
+        <div class="seg" id="hfilter" role="radiogroup" aria-label="Show">
+          <label><input type="radio" name="hf" value="all" checked><span>All</span></label>
+          <label><input type="radio" name="hf" value="posted"><span>Posted</span></label>
+          <label><input type="radio" name="hf" value="preview"><span>Previews</span></label>
+          <label><input type="radio" name="hf" value="failed"><span>Failed</span></label>
+        </div>
+      </div>
+      <div id="history"></div>
+    </div>
+
+    <!-- ACCOUNTS -->
+    <div class="page" id="v-accounts" hidden>
+      <div class="head"><div><h1>Accounts</h1><p class="muted">You sign in yourself, in the app's own Chrome window. The app never sees a password.</p></div><button class="btn" id="acct-refresh">Check again</button></div>
+      <div id="acct-chrome"></div>
+      <div class="accounts" id="accounts"></div>
+    </div>
+  </main>
+</div>
+
+<dialog id="confirm">
+  <div class="body"><h2 id="cf-title"></h2><p class="muted" id="cf-text"></p><ul id="cf-list"></ul></div>
+  <div class="acts"><button class="btn" id="cf-no">Cancel</button><button class="btn primary" id="cf-yes">Post now</button></div>
+</dialog>
+<div class="toast" id="toast" hidden role="status"></div>
+
 <script>
-const $ = (s) => document.querySelector(s);
-let platforms = {};
-async function loadStatus() {
-  try {
-    platforms = await (await fetch("/api/status")).json();
-    $("#cards").innerHTML = Object.entries(platforms).map(([id, p]) => `
-      <div class="card">
-        <div class="name"><span class="dot ${p.loggedIn ? "ok" : "bad"}"></span>${p.label}${p.verified ? "" : ' <span class="beta">in testing</span>'}</div>
-        <div class="st">${p.loggedIn ? "Signed in" : "Not signed in"}</div>
-        <button class="${p.loggedIn ? "ghost" : ""}" onclick="connect('${id}')">${p.loggedIn ? "Open sign-in page" : "Sign in"}</button>
-      </div>`).join("");
-    $("#targets").innerHTML = Object.entries(platforms).map(([id, p]) =>
-      `<label class="chk"><input type="checkbox" name="platforms" value="${id}" ${p.loggedIn ? "checked" : "disabled"}> ${p.label}${p.loggedIn ? (p.verified ? "" : " · in testing") : " (sign in first)"}</label>`).join("");
-  } catch (e) { $("#cards").innerHTML = `<div class="card">Could not open the browser: ${e.message}</div>`; }
-}
-async function connect(id) {
-  $("#log").textContent = `A browser window is opening on ${platforms[id].label}. Sign in there. This page updates by itself.`;
-  await fetch("/api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ platform: id }) });
-  const t = setInterval(async () => { await loadStatus(); if (platforms[id].loggedIn) { clearInterval(t); $("#log").textContent = `${platforms[id].label} is signed in.`; } }, 4000);
-}
-// List the selected clips, each with an optional per-clip caption (caption0, caption1, …).
-$("input[name=videos]").addEventListener("change", (e) => {
-  const files = [...e.target.files];
-  $("#files").innerHTML = files.length
-    ? files.map((f, i) => `<div class="row"><span style="min-width:170px">🎬 ${f.name}</span><input name="caption${i}" placeholder="caption for this clip (optional)" style="flex:1"></div>`).join("")
-    : "";
-  label();
-});
+(() => {
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const api = async (path, opts = {}) => {
+    const r = await fetch(path, opts);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `Something went wrong (${r.status}).`);
+    return j;
+  };
+  const post = (path, body) => api(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many || one + 's'}`;
+  const BADGE = { tiktok: 'Tt', instagram: 'Ig', youtube: 'Yt', x: 'X', facebook: 'Fb', linkedin: 'in', threads: 'Th' };
+  const badge = (id, sm) => `<span class="badge ${sm ? 'sm ' : ''}b-${esc(id)}" aria-hidden="true">${esc(BADGE[id] || id.slice(0, 2))}</span>`;
+  let toastTimer;
+  const toast = (msg) => { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 4200); };
 
-function cell(st) {
-  return st === "done" ? '<span class="pill">✓</span>'
-    : st === "error" ? '<span class="pill err">✖</span>'
-    : st === "posting" ? '<span class="pill dry">…</span>'
-    : '<span class="pill dry">·</span>';
-}
-function renderGrid(items) {
-  const vids = [...new Set(items.map(i => i.video))];
-  const plats = [...new Set(items.map(i => i.platform))];
-  let html = '<table><thead><tr><th>Clip</th>' + plats.map(p => `<th>${p}</th>`).join("") + '</tr></thead><tbody>';
-  for (const v of vids) {
-    html += `<tr><td>${v.split("/").pop()}</td>` + plats.map(p => {
-      const it = items.find(i => i.video === v && i.platform === p);
-      return `<td>${it ? cell(it.status) : ""} ${it && it.note ? '<span class="warn">' + it.note.slice(0, 44) + '</span>' : ""}</td>`;
-    }).join("") + "</tr>";
+  const state = {
+    app: null,            // { settings, platforms:[{id,label}] }
+    status: null,         // { id: {label, loggedIn, postsUrl} } | { error }
+    statusAt: 0,
+    waiting: new Set(),   // platforms we opened a sign-in window for
+    clips: [],            // { id, file, url, caption }
+    picked: null,         // Set of platform ids chosen for this post (null = not chosen yet)
+    batchId: null,
+    batch: null,
+  };
+
+  /* ---------------- navigation ---------------- */
+  function go(view) {
+    for (const v of ['post', 'progress', 'history', 'accounts']) $(`#v-${v}`).hidden = v !== view;
+    $$('.nav button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.go === view));
+    $$('.nav button[aria-current]').forEach((b) => b.setAttribute('aria-current', 'page'));
+    if (view === 'history') loadHistory();
+    if (view === 'accounts' || view === 'post') refreshStatus();
+    history.replaceState(null, '', `#${view}`);
+    window.scrollTo(0, 0);
   }
-  return html + "</tbody></table>";
-}
+  $$('.nav button').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
 
-$("#form").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const fd = new FormData(ev.target);
-  const vids = fd.getAll("videos").filter(f => f && f.size > 0);
-  if (!vids.length) { $("#hint").textContent = "Pick at least one video."; return; }
-  if (!fd.getAll("platforms").length) { $("#hint").textContent = "Tick at least one platform you are signed in to."; return; }
-  $("#go").disabled = true; $("#hint").textContent = "";
-  $("#log").textContent = `Uploading ${vids.length} clip(s)…`; $("#grid").innerHTML = "";
-  const r = await (await fetch("/api/batch", { method: "POST", body: fd })).json();
-  if (r.error) { $("#log").textContent = "Error: " + r.error; $("#go").disabled = false; return; }
-  const poll = setInterval(async () => {
-    const j = await (await fetch("/api/batches/" + r.id)).json();
-    $("#log").textContent = j.log.join("\n");
-    if (j.items) $("#grid").innerHTML = renderGrid(j.items);
-    if (j.done) { clearInterval(poll); $("#go").disabled = false; }
-  }, 1500);
-});
-// The button says what it will really do.
-function label() {
-  const n = $("input[name=videos]").files.length;
-  const live = $("input[name=live]").checked;
-  const del = $("input[name=deleteAfter]");
-  $("#delwrap").hidden = !live;
-  if (!live) del.checked = false;
-  $("#go").textContent = (live ? (del.checked ? "Post, then delete" : "Post") : "Rehearse") + (n > 1 ? ` all ${n}` : "");
-}
-$("input[name=deleteAfter]").addEventListener("change", label);
-$("input[name=live]").addEventListener("change", label);
-loadStatus();
+  /* ---------------- accounts ---------------- */
+  const connected = () => (state.status && !state.status.error ? Object.entries(state.status).filter(([, s]) => s.loggedIn).map(([id]) => id) : []);
+
+  async function refreshStatus(force) {
+    if (!force && Date.now() - state.statusAt < 2500) return renderStatus();
+    try { state.status = await api('/api/status'); }
+    catch (e) { state.status = { error: 'failed', message: e.message }; }
+    state.statusAt = Date.now();
+    for (const id of connected()) state.waiting.delete(id);
+    renderStatus();
+  }
+
+  function chromeNotice() {
+    const s = state.status;
+    if (!s || !s.error) return '';
+    if (s.error === 'chrome-missing') return `<div class="notice bad" style="margin-bottom:14px"><div><b>Google Chrome isn't installed.</b><span class="muted">Post Everywhere signs you in through Chrome. Install it from <a href="https://www.google.com/chrome/" target="_blank" rel="noopener" style="color:inherit">google.com/chrome</a>, then press Check again.</span></div></div>`;
+    return `<div class="notice bad" style="margin-bottom:14px"><div><b>The app's Chrome window didn't answer.</b><span class="muted">${esc(s.message || '')} Press Check again.</span></div></div>`;
+  }
+
+  function accountCards() {
+    const s = state.status;
+    if (!s) return state.app.platforms.map(() => '<div class="skeleton"></div>').join('');
+    return state.app.platforms.map(({ id, label }) => {
+      const on = !s.error && s[id]?.loggedIn;
+      const waiting = state.waiting.has(id) && !on;
+      const pill = on ? '<span class="pill ok">Connected</span>' : waiting ? '<span class="pill info busy">Waiting for you to sign in</span>' : '<span class="pill">Not connected</span>';
+      const acts = on
+        ? `<button class="btn sm quiet" data-disconnect="${esc(id)}">Disconnect</button>`
+        : `<button class="btn sm ${waiting ? '' : 'primary'}" data-connect="${esc(id)}">${waiting ? 'Open window again' : 'Connect'}</button>`;
+      return `<div class="card acct">${badge(id)}<div class="who"><b>${esc(label)}</b>${pill}</div><div class="acts">${acts}</div></div>`;
+    }).join('');
+  }
+
+  function renderStatus() {
+    for (const [box, notice] of [['#accounts', '#acct-chrome'], ['#ob-accounts', '#ob-chrome']]) {
+      $(box).innerHTML = accountCards();
+      $(notice).innerHTML = chromeNotice();
+    }
+    const n = connected().length;
+    $('#ob-next').disabled = n === 0;
+    $('#ob-hint').textContent = n ? `${plural(n, 'account')} connected.` : 'Connect at least one account to continue.';
+    renderChips();
+    renderSummary();
+  }
+
+  document.addEventListener('click', async (e) => {
+    const c = e.target.closest('[data-connect]');
+    const d = e.target.closest('[data-disconnect]');
+    if (c) {
+      const id = c.dataset.connect;
+      c.disabled = true;
+      try { await post('/api/login', { platform: id }); state.waiting.add(id); toast('A Chrome window opened. Sign in there, then come back.'); }
+      catch (err) { toast(err.message); }
+      renderStatus();
+    }
+    if (d) {
+      const id = d.dataset.disconnect;
+      const label = state.status[id]?.label || id;
+      d.disabled = true; d.textContent = 'Disconnecting…';
+      try { await post('/api/disconnect', { platform: id }); state.picked?.delete(id); toast(`${label} is disconnected.`); }
+      catch (err) { toast(err.message); }
+      await refreshStatus(true);
+    }
+  });
+  $('#acct-refresh').addEventListener('click', async () => { $('#acct-refresh').disabled = true; await refreshStatus(true); $('#acct-refresh').disabled = false; });
+  // While a sign-in window is open, keep checking so "Connected" appears by itself.
+  setInterval(() => { if (state.waiting.size && !document.hidden) refreshStatus(true); }, 4000);
+  window.addEventListener('focus', () => { if (state.waiting.size) refreshStatus(true); });
+
+  /* ---------------- first run ---------------- */
+  function onboardStep(n) {
+    $('#ob-welcome').hidden = n !== 1; $('#ob-connect').hidden = n !== 2; $('#ob-done').hidden = n !== 3;
+    $('#st2').classList.toggle('on', n >= 2); $('#st3').classList.toggle('on', n >= 3);
+    $('#onboard').scrollTo(0, 0);
+    if (n === 2) refreshStatus(true);
+    if (n === 3) {
+      const names = connected().map((id) => state.status[id].label);
+      $('#ob-done-text').textContent = `${names.length === 1 ? names[0] + ' is' : names.slice(0, -1).join(', ') + ' and ' + names.slice(-1) + ' are'} connected. You can add or remove accounts any time under Accounts.`;
+    }
+  }
+  $('#ob-start').addEventListener('click', () => onboardStep(2));
+  $('#ob-back').addEventListener('click', () => onboardStep(1));
+  $('#ob-next').addEventListener('click', () => onboardStep(3));
+  $('#ob-finish').addEventListener('click', async () => {
+    state.app.settings = await post('/api/settings', { onboarded: true });
+    $('#onboard').hidden = true;
+    go('post');
+  });
+
+  /* ---------------- post: clips ---------------- */
+  const VIDEO = /\.(mp4|mov|m4v|webm)$/i;
+  function addFiles(files) {
+    let skipped = 0;
+    for (const f of files) {
+      if (!(f.type.startsWith('video/') || VIDEO.test(f.name))) { skipped++; continue; }
+      if (state.clips.some((c) => c.file.name === f.name && c.file.size === f.size)) continue;
+      state.clips.push({ id: Math.random().toString(36).slice(2), file: f, url: URL.createObjectURL(f), caption: '' });
+    }
+    if (skipped) toast(`${plural(skipped, 'file')} skipped: only videos can be posted.`);
+    renderClips();
+  }
+  const drop = $('#drop');
+  $('#pick').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
+  drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#pick').click(); } });
+  for (const ev of ['dragenter', 'dragover']) window.addEventListener(ev, (e) => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); drop.classList.add('over'); } });
+  for (const ev of ['dragleave', 'drop']) window.addEventListener(ev, (e) => { if (ev === 'drop' || e.relatedTarget === null) drop.classList.remove('over'); });
+  window.addEventListener('drop', (e) => { if (!e.dataTransfer?.files?.length) return; e.preventDefault(); if ($('#v-post').hidden) go('post'); addFiles(e.dataTransfer.files); });
+
+  const size = (b) => (b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : (b / 1e6).toFixed(b > 1e7 ? 0 : 1) + ' MB');
+  function renderClips() {
+    const shared = $('#shared-toggle').checked;
+    $('#caption-section').hidden = state.clips.length === 0;
+    $('#shared-box').hidden = !shared;
+    $('#clip-count').textContent = plural(state.clips.length, 'clip');
+    $('#clips').innerHTML = state.clips.map((c) => `
+      <div class="card clip" data-clip="${c.id}">
+        <video src="${c.url}#t=0.1" muted playsinline preload="metadata"></video>
+        <div class="meta">
+          <div><div class="name" title="${esc(c.file.name)}">${esc(c.file.name)}</div><div class="muted small">${size(c.file.size)}</div></div>
+          ${shared ? '<div class="muted small">Uses the shared caption above.</div>' : `<textarea rows="2" placeholder="Caption for this clip" aria-label="Caption for ${esc(c.file.name)}">${esc(c.caption)}</textarea>`}
+        </div>
+        <button class="btn sm quiet" data-remove="${c.id}" aria-label="Remove ${esc(c.file.name)}">Remove</button>
+      </div>`).join('');
+    renderSummary();
+  }
+  $('#clips').addEventListener('input', (e) => { const row = e.target.closest('[data-clip]'); const c = state.clips.find((x) => x.id === row?.dataset.clip); if (c && e.target.tagName === 'TEXTAREA') { c.caption = e.target.value; renderSummary(); } });
+  $('#clips').addEventListener('click', (e) => { const b = e.target.closest('[data-remove]'); if (!b) return; const i = state.clips.findIndex((x) => x.id === b.dataset.remove); if (i >= 0) { URL.revokeObjectURL(state.clips[i].url); state.clips.splice(i, 1); renderClips(); } });
+  $('#shared-toggle').addEventListener('change', renderClips);
+  $('#shared-caption').addEventListener('input', renderSummary);
+
+  /* ---------------- post: where + when ---------------- */
+  function renderChips() {
+    const s = state.status;
+    if (!s) return;
+    if (s.error) { $('#chips').innerHTML = chromeNotice() || '<span class="muted">Accounts could not be checked.</span>'; return; }
+    const on = connected();
+    if (state.picked === null && on.length) state.picked = new Set(on);            // first look: everything connected
+    if (state.picked) for (const id of [...state.picked]) if (!on.includes(id)) state.picked.delete(id);
+    $('#chips').innerHTML = state.app.platforms.map(({ id, label }) => on.includes(id)
+      ? `<label class="chip">${badge(id, true)}<input type="checkbox" value="${esc(id)}" ${state.picked?.has(id) ? 'checked' : ''}>${esc(label)}</label>`
+      : `<span class="chip off">${badge(id, true)}${esc(label)} <button type="button" data-go-accounts>Connect</button></span>`).join('');
+  }
+  $('#chips').addEventListener('change', (e) => { if (!state.picked) state.picked = new Set(); e.target.checked ? state.picked.add(e.target.value) : state.picked.delete(e.target.value); renderSummary(); });
+  $('#chips').addEventListener('click', (e) => { if (e.target.closest('[data-go-accounts]')) go('accounts'); });
+
+  const spaceValue = () => Number($('input[name="space"]:checked')?.value ?? 60);
+  $('#spacing').addEventListener('change', async () => { $('#space-warn').hidden = spaceValue() !== 0; renderSummary(); try { state.app.settings = await post('/api/settings', { spaceSec: spaceValue() }); } catch {} });
+  const spaceWords = (s) => (s === 0 ? 'no pause' : s < 60 ? `${s} seconds apart` : `${s / 60} minute${s === 60 ? '' : 's'} apart`);
+
+  function captionFor(c) { return $('#shared-toggle').checked ? $('#shared-caption').value.trim() : c.caption.trim(); }
+  function renderSummary() {
+    const n = state.clips.length, m = state.picked?.size || 0;
+    const busy = state.batch && !state.batch.done;
+    const ready = n > 0 && m > 0 && !busy;
+    $('#btn-preview').disabled = !ready; $('#btn-post').disabled = !ready;
+    const missing = state.clips.filter((c) => !captionFor(c)).length;
+    $('#sum-line').textContent = busy ? 'Posts are going out. Watch them under Progress.' : !n ? 'Add a clip to begin.' : !m ? 'Choose at least one account.' : `${plural(n, 'clip')} to ${plural(m, 'account')}: ${plural(n * m, 'post')}.`;
+    $('#sum-sub').textContent = ready ? `${spaceWords(spaceValue())}${missing ? ` · ${plural(missing, 'clip has', 'clips have')} no caption` : ''}` : '';
+  }
+
+  /* ---------------- post: send ---------------- */
+  async function send(live) {
+    const fd = new FormData();
+    const shared = $('#shared-toggle').checked;
+    state.clips.forEach((c, i) => { fd.append('videos', c.file, c.file.name); if (!shared) fd.append(`caption${i}`, c.caption); });
+    fd.append('caption', shared ? $('#shared-caption').value : '');
+    for (const id of state.picked) fd.append('platforms', id);
+    fd.append('space', String(spaceValue()));
+    if (live) fd.append('live', 'on');
+    $('#btn-preview').disabled = $('#btn-post').disabled = true;
+    $('#sum-line').textContent = 'Sending your clips to the app…';
+    try {
+      const { id } = await api('/api/batch', { method: 'POST', body: fd });
+      state.batchId = id; state.batch = null;
+      go('progress'); pollBatch();
+    } catch (e) { toast(e.message); renderSummary(); }
+  }
+  $('#btn-preview').addEventListener('click', () => send(false));
+  $('#btn-post').addEventListener('click', () => {
+    const n = state.clips.length, ids = [...state.picked];
+    $('#cf-title').textContent = `Post ${plural(n, 'clip')} for real?`;
+    $('#cf-text').textContent = `This publishes ${plural(n * ids.length, 'post')} from your own accounts, ${spaceWords(spaceValue())}.`;
+    $('#cf-list').innerHTML = ids.map((id) => `<li>${esc(state.status[id]?.label || id)}</li>`).join('');
+    $('#confirm').showModal();
+  });
+  $('#cf-no').addEventListener('click', () => $('#confirm').close());
+  $('#cf-yes').addEventListener('click', () => { $('#confirm').close(); send(true); });
+
+  /* ---------------- progress ---------------- */
+  const WORD = { pending: ['Waiting', ''], posting: ['Posting', 'info busy'], done: ['Done', 'ok'], error: ['Failed', 'bad'], skipped: ['Skipped', ''] };
+  let pollTimer;
+  async function pollBatch() {
+    clearTimeout(pollTimer);
+    if (!state.batchId) return;
+    try { state.batch = await api(`/api/batches/${state.batchId}`); } catch { state.batch = null; }
+    renderProgress();
+    if (state.batch && !state.batch.done) pollTimer = setTimeout(pollBatch, 1000);
+    else { renderSummary(); if (state.batch && !$('#v-history').hidden) loadHistory(); }
+  }
+
+  function renderProgress() {
+    const b = state.batch;
+    $('#pg-empty').hidden = !!b; $('#pg-body').hidden = !b;
+    const liveCount = b && !b.done ? b.items.filter((i) => i.status === 'posting' || i.status === 'pending').length : 0;
+    $('#nav-live').hidden = !liveCount; $('#nav-live').textContent = liveCount;
+    if (!b) { $('#pg-title').textContent = 'Progress'; $('#pg-sub').textContent = ''; $('#pg-retry').hidden = $('#pg-new').hidden = true; return; }
+    const total = b.items.length, done = b.items.filter((i) => i.status === 'done').length, failed = b.items.filter((i) => i.status === 'error').length;
+    const finished = done + failed;
+    $('#pg-title').textContent = b.done ? (failed ? (done ? 'Finished, with some failures' : 'Nothing went through') : b.live ? 'All posted' : 'Preview finished') : b.live ? 'Posting…' : 'Running the preview…';
+    $('#pg-sub').textContent = b.live ? 'These are real posts from your accounts.' : 'A preview fills in everything and stops before the Post button. Nothing is published.';
+    $('#pg-mode').className = `pill ${b.live ? 'ok' : 'info'}`; $('#pg-mode').textContent = b.live ? 'Posting for real' : 'Preview only';
+    $('#pg-count').textContent = `${finished} of ${plural(total, 'post')} finished${failed ? ` · ${failed} failed` : ''}`;
+    $('#pg-bar').style.width = `${Math.round((finished / total) * 100)}%`;
+    const now = b.items.filter((i) => i.status === 'posting');
+    const lastLog = (b.log[b.log.length - 1] || '').replace(/^\[[^\]]+\]\s*/, '');
+    $('#pg-now').textContent = b.done ? (failed ? 'See what to do about each failure below.' : b.live ? 'Everything went out.' : 'Everything is ready to post for real.') : now.length ? `Now: ${now.map((i) => `${i.name} → ${i.label}`).join(', ')}` : /pacing/.test(lastLog) ? `Pausing between posts (${lastLog.replace(/^…?pacing /, '')}).` : 'Getting ready…';
+
+    const clips = [...new Set(b.items.map((i) => i.video))];
+    const plats = [...new Set(b.items.map((i) => i.platform))];
+    const label = (id) => b.items.find((i) => i.platform === id).label.replace(/\s*\(.*\)$/, '');
+    $('#pg-grid').innerHTML = `<thead><tr><th scope="col">Clip</th>${plats.map((p) => `<th scope="col"><span class="row" style="gap:8px;flex-wrap:nowrap">${badge(p, true)}${esc(label(p))}</span></th>`).join('')}</tr></thead><tbody>${clips.map((v) => {
+      const row = b.items.filter((i) => i.video === v);
+      return `<tr><th scope="row" title="${esc(row[0].name)}">${esc(row[0].name)}</th>${plats.map((p) => {
+        const it = row.find((i) => i.platform === p);
+        if (!it) return '<td></td>';
+        let [word, cls] = WORD[it.status] || [it.status, ''];
+        if (it.status === 'done' && !b.live) word = 'Ready';
+        if (it.status === 'done' && /deleted/.test(it.note || '')) word = 'Posted, then removed';
+        if (it.status === 'done' && it.fix) { word = 'Posted, not removed'; cls = 'warn'; }
+        const pill = `<span class="pill ${cls}">${esc(word)}</span>`;
+        return `<td>${it.fix ? `<button class="cellbtn" data-jump="${esc(it.platform + '|' + it.video)}" title="See how to fix this">${pill}</button>` : pill}</td>`;
+      }).join('')}</tr>`;
+    }).join('')}</tbody>`;
+
+    const fails = b.items.filter((i) => i.fix);
+    $('#pg-fails').innerHTML = fails.map((i) => `
+      <div class="card fail" id="fail-${esc((i.platform + '|' + i.video).replace(/[^a-z0-9]/gi, '_'))}">
+        <div class="top">${badge(i.platform, true)}<b>${esc(i.label)}</b><span class="muted">· ${esc(i.name)}</span></div>
+        <b>${esc(i.fix.problem)}</b>
+        <p class="muted">${esc(i.fix.fix)}</p>
+        <div class="row" style="margin-top:10px">
+          ${i.fix.action === 'connect' ? '<button class="btn sm primary" data-go-view="accounts">Open Accounts</button>' : ''}
+          ${i.fix.action === 'add-clip' ? '<button class="btn sm primary" data-go-view="post">Back to Post</button>' : ''}
+          ${i.fix.action === 'chrome' ? '<a class="btn sm primary" href="https://www.google.com/chrome/" target="_blank" rel="noopener">Get Chrome</a>' : ''}
+          ${i.postsUrl && /NOT DELETED/.test(i.note || '') ? `<a class="btn sm" href="${esc(i.postsUrl)}" target="_blank" rel="noopener">Open ${esc(i.label)}</a>` : ''}
+        </div>
+        <details><summary>Details</summary><code>${esc(i.note || '')}</code></details>
+      </div>`).join('');
+    $('#pg-retry').hidden = !(b.done && failed > 0);
+    $('#pg-new').hidden = !b.done;
+  }
+  $('#pg-grid').addEventListener('click', (e) => { const j = e.target.closest('[data-jump]'); if (j) document.getElementById('fail-' + j.dataset.jump.replace(/[^a-z0-9]/gi, '_'))?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  $('#pg-fails').addEventListener('click', (e) => { const g = e.target.closest('[data-go-view]'); if (g) go(g.dataset.goView); });
+  $('#pg-retry').addEventListener('click', async () => { $('#pg-retry').disabled = true; try { await post(`/api/batches/${state.batchId}/resume`); pollBatch(); } catch (e) { toast(e.message); } $('#pg-retry').disabled = false; });
+  $('#pg-new').addEventListener('click', () => { for (const c of state.clips) URL.revokeObjectURL(c.url); state.clips = []; renderClips(); go('post'); });
+
+  /* ---------------- history ---------------- */
+  const KIND = { posted: ['Posted', 'ok'], preview: ['Preview', 'info'], failed: ['Failed', 'bad'], deleted: ['Removed', ''], other: ['Other', ''] };
+  let rows = [];
+  async function loadHistory() {
+    try { rows = await api('/api/history'); } catch (e) { rows = []; toast(e.message); }
+    renderHistory();
+  }
+  function renderHistory() {
+    const f = $('input[name="hf"]:checked').value;
+    const list = rows.filter((r) => f === 'all' || r.kind === f);
+    if (!list.length) { $('#history').innerHTML = `<div class="card empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><h2>${rows.length ? 'Nothing matches that filter' : 'No posts yet'}</h2><p class="muted">${rows.length ? 'Choose All to see everything.' : 'Your posts and previews show up here.'}</p></div>`; return; }
+    const when = (r) => new Date(String(r.posted_at).replace(' ', 'T') + 'Z');
+    const today = new Date().toDateString(), yest = new Date(Date.now() - 864e5).toDateString();
+    let html = '', open = false, last = '';
+    for (const r of list) {
+      const d = when(r), key = d.toDateString();
+      if (key !== last) { if (open) html += '</div>'; html += `<div class="day">${key === today ? 'Today' : key === yest ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</div><div class="card">`; open = true; last = key; }
+      const [word, cls] = KIND[r.kind] || KIND.other;
+      html += `<div class="hrow" ${r.fix ? `title="${esc(r.fix.problem + ' ' + r.fix.fix)}"` : ''}>${badge(r.platform, true)}<span class="nm" title="${esc(r.name)}">${esc(r.name)}</span><span class="cap" title="${esc(r.caption || '')}">${esc(r.fix ? r.fix.problem : r.caption || 'No caption')}</span><span class="pill ${cls}">${word}</span><time datetime="${d.toISOString()}">${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>${r.link && r.kind === 'posted' ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">Open ${esc(r.label)}</a>` : '<span></span>'}</div>`;
+    }
+    $('#history').innerHTML = html + '</div>';
+  }
+  $('#hfilter').addEventListener('change', renderHistory);
+
+  /* ---------------- start ---------------- */
+  (async () => {
+    try { state.app = await api('/api/app'); }
+    catch (e) { document.body.innerHTML = `<div style="padding:60px 24px;max-width:520px;margin:0 auto"><h1>Post Everywhere isn't running</h1><p class="muted" style="margin-top:8px">Start it again, then reload this page.</p></div>`; return; }
+    const saved = state.app.settings.spaceSec;
+    ($(`input[name="space"][value="${saved}"]`) || $('input[name="space"][value="60"]')).checked = true;
+    $('#space-warn').hidden = spaceValue() !== 0;
+    renderStatus(); renderClips();
+    try { const cur = await api('/api/batches/current'); if (cur) { state.batchId = cur.id; state.batch = cur; renderProgress(); if (!cur.done) pollBatch(); } } catch {}
+    if (!state.app.settings.onboarded) { $('#onboard').hidden = false; onboardStep(1); go('post'); }
+    else { const want = location.hash.slice(1); go(['post', 'progress', 'history', 'accounts'].includes(want) ? want : state.batch && !state.batch.done ? 'progress' : 'post'); }
+  })();
+})();
 </script>
 </body>
 </html>

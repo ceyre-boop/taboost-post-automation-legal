@@ -4,6 +4,19 @@ Northbound Studio's first automation: add one video, and it goes to every platfo
 
 It was called TABOOST Poster until 2026-11-18. The repo keeps its old name so the published legal pages and download links keep working.
 
+## Post Everywhere: the app (2026-11-21)
+
+`bun run app` starts the app at http://127.0.0.1:4747. It is the same posting engine with a front end a non-technical person can use alone:
+
+- **First run:** welcome, connect accounts, done. Each Connect opens the app's own Chrome window and the person signs in there. The app never asks for, sees or stores a password or token. **Disconnect** clears that one site's session from the app's Chrome and nothing else.
+- **Post:** drag in videos, a caption per clip or one shared caption, pick accounts, set the time between posts (on by default), then **Preview** (fills everything in and stops before the Post button) or **Post now**.
+- **Progress:** a live clip by platform grid: Waiting, Posting, Done, Failed. Every failure has a plain-English problem and fix (`explain()` in `src/app.ts`), with the raw message under Details, and **Try failed again** re-runs only what failed.
+- **History:** what went where and when, with a link to the person's own posts on that platform.
+- Seven platforms are offered. Pinterest is hidden until it has posted for real.
+- Nothing is tied to one person's machine: all data is in the user's own app folder (see below), and a brand-new empty folder goes through first-run cleanly.
+
+Tests: `npm test` (settings, naming, the platform list, the failure messages, devices, weekly) and `bun run typecheck`.
+
 ## Where it stands (2026-11-18)
 
 | Platform | State |

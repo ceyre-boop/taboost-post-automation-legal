@@ -10,6 +10,7 @@ import { withBrowser, pageFor } from "./browser.ts";
 import { PLATFORMS, getPlatform } from "./platforms/index.ts";
 import { buildBatch, runBatch as runBatchEngine, type Batch } from "./batch.ts";
 import { openHistory, recordPost } from "./history.ts";
+import { APP_NAME, APP_PLATFORMS, appPlatformIds, isAppPlatform, cleanSpace, disconnect, displayName, explain, readSettings, uploadName, writeSettings } from "./app.ts";
 
 const UPLOADS = join(APP_DIR, "uploads");
 
@@ -18,10 +19,11 @@ const UPLOADS = join(APP_DIR, "uploads");
 let HTML_CACHE: Buffer | null = null;
 function dashboardHtml(): Buffer {
   if (HTML_CACHE) return HTML_CACHE;
-  const p = process.env.POSTER_DASHBOARD_HTML
-    || join(dirname(fileURLToPath(import.meta.url)), "..", "dashboard", "index.html");
-  HTML_CACHE = readFileSync(p);
-  return HTML_CACHE;
+  const packaged = process.env.POSTER_DASHBOARD_HTML;
+  const p = packaged || join(dirname(fileURLToPath(import.meta.url)), "..", "dashboard", "index.html");
+  const html = readFileSync(p);
+  if (packaged) HTML_CACHE = html; // from source, read fresh each time so an edit shows on refresh
+  return html;
 }
 
 // Phone-first upload page (served at /m). Honors POSTER_MOBILE_HTML for the packaged app.
@@ -68,10 +70,12 @@ function profileFor(req: IncomingMessage, url: URL): Profile {
 
 async function status(profile: Profile = defaultProfile) {
   return withBrowser(async (ctx) => {
-    const out: Record<string, { label: string; loggedIn: boolean; verified: boolean }> = {};
-    for (const p of Object.values(PLATFORMS)) {
+    const out: Record<string, { label: string; loggedIn: boolean; verified: boolean; postsUrl: string }> = {};
+    // Only the platforms the app offers, in the order it shows them.
+    for (const id of appPlatformIds()) {
+      const p = PLATFORMS[id];
       const page = ctx.pages()[0] ?? (await ctx.newPage());
-      out[p.id] = { label: p.label, loggedIn: await p.isLoggedIn(page).catch(() => false), verified: p.verified ?? false };
+      out[p.id] = { label: p.label, loggedIn: await p.isLoggedIn(page).catch(() => false), verified: p.verified ?? false, postsUrl: APP_PLATFORMS[id].postsUrl };
     }
     return out;
   }, "about:blank", profile);
@@ -128,6 +132,7 @@ function runJob(video: string, caption: string, platformIds: string[], live: boo
 interface BatchRun { batch: Batch; log: string[]; done: boolean; }
 const batches = new Map<string, BatchRun>();
 let batchRunning = false; // one batch at a time, so spacing is never defeated by overlap
+let lastBatchId = ""; // so a refreshed page can pick its progress grid back up
 
 function startBatch(videos: { path: string; caption?: string }[], platformIds: string[], live: boolean, spaceSec: number, sharedCaption: string, profile: Profile = defaultProfile, deleteAfter = false): BatchRun {
   const batch = buildBatch({ videos, platforms: platformIds, live, deleteAfter, spaceSec, sharedCaption });
@@ -141,6 +146,26 @@ function startBatch(videos: { path: string; caption?: string }[], platformIds: s
     finally { entry.done = true; batchRunning = false; }
   })();
   return entry;
+}
+
+/** A batch as the app shows it: each clip by the name the person knows, each platform by
+ *  its label, and every failure with a plain-English fix beside the raw message. */
+function batchView(entry: BatchRun) {
+  const b = entry.batch;
+  return {
+    id: b.id,
+    live: b.live,
+    deleteAfter: !!b.deleteAfter,
+    spaceSec: b.spaceSec,
+    createdAt: b.createdAt,
+    done: entry.done,
+    log: entry.log,
+    items: b.items.map((i) => {
+      const label = PLATFORMS[i.platform]?.label ?? i.platform;
+      const problem = i.status === "error" || /NOT DELETED/.test(i.note ?? "");
+      return { ...i, name: displayName(i.video), label, postsUrl: APP_PLATFORMS[i.platform]?.postsUrl ?? "", fix: problem ? explain(i.note ?? "", label) : null };
+    }),
+  };
 }
 
 function json(res: ServerResponse, code: number, body: unknown) {
@@ -177,7 +202,28 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       return res.end(mobileHtml());
     }
-    if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, await status(profileFor(req, url)));
+    if (req.method === "GET" && url.pathname === "/api/status") {
+      try { return json(res, 200, await status(profileFor(req, url))); }
+      catch (e) {
+        // The one setup problem a new person can hit: no Chrome. Say so in a way the page can act on.
+        const msg = (e as Error).message;
+        if (/Chrome not found/i.test(msg)) return json(res, 200, { error: "chrome-missing", message: msg });
+        throw e;
+      }
+    }
+    if (req.method === "GET" && url.pathname === "/api/app") {
+      return json(res, 200, { name: APP_NAME, settings: readSettings(), platforms: appPlatformIds().map((id) => ({ id, label: PLATFORMS[id].label })), batchRunning });
+    }
+    if (req.method === "POST" && url.pathname === "/api/settings") {
+      return json(res, 200, writeSettings(JSON.parse((await readBody(req)).toString() || "{}")));
+    }
+    if (req.method === "POST" && url.pathname === "/api/disconnect") {
+      const { platform } = JSON.parse((await readBody(req)).toString() || "{}");
+      if (!isAppPlatform(String(platform))) return json(res, 400, { error: "Unknown platform." });
+      if (batchRunning) return json(res, 409, { error: "Posts are going out right now. Disconnect when they finish." });
+      await withBrowser((ctx) => disconnect(ctx, String(platform)), "about:blank", profileFor(req, url));
+      return json(res, 200, { ok: true });
+    }
     // --- phone devices: each phone gets its own Chrome profile ---
     if (req.method === "GET" && url.pathname === "/api/device") {
       const d = deviceFor(req, url);
@@ -254,25 +300,55 @@ const server = createServer(async (req, res) => {
       for (let i = 0; i < all.length; i++) {
         const f = all[i];
         if (!(f instanceof File) || f.size === 0) continue; // keep the ORIGINAL index so captions stay aligned
-        const dest = join(UPLOADS, `${Date.now()}-${i}${extname(f.name) || ".mp4"}`);
+        const dest = join(UPLOADS, uploadName(i, f.name || `clip${extname(f.name) || ".mp4"}`));
         writeFileSync(dest, Buffer.from(await f.arrayBuffer()));
         const per = String(form.get(`caption${i}`) ?? "").trim();
         videos.push({ path: dest, caption: per || undefined });
       }
       if (!videos.length) return json(res, 400, { error: "pick at least one video" });
-      const entry = startBatch(videos, platformIds, form.get("live") === "on", Number(form.get("space")) || 60, String(form.get("caption") ?? ""), profileFor(req, url), form.get("deleteAfter") === "on");
+      // Spacing comes from the form; a blank field means the saved setting (on by default).
+      const rawSpace = form.get("space");
+      const spaceSec = rawSpace === null || String(rawSpace).trim() === "" ? readSettings().spaceSec : cleanSpace(rawSpace);
+      const entry = startBatch(videos, platformIds, form.get("live") === "on", spaceSec, String(form.get("caption") ?? ""), profileFor(req, url), form.get("deleteAfter") === "on");
+      lastBatchId = entry.batch.id;
+      return json(res, 200, { id: entry.batch.id });
+    }
+    if (req.method === "GET" && url.pathname === "/api/batches/current") {
+      const b = lastBatchId ? batches.get(lastBatchId) : undefined;
+      return json(res, 200, b ? batchView(b) : null);
+    }
+    // Try the failed posts again. Posts that already went out are never repeated.
+    if (req.method === "POST" && /^\/api\/batches\/[^/]+\/resume$/.test(url.pathname)) {
+      const entry = batches.get(url.pathname.split("/")[3]);
+      if (!entry) return json(res, 404, { error: "no such batch" });
+      if (batchRunning) return json(res, 409, { error: "Posts are already going out. Wait for them to finish." });
+      entry.done = false;
+      batchRunning = true;
+      const log = (m: string) => entry.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
+      const profile = profileFor(req, url);
+      (async () => {
+        try { await runBatchEngine(entry.batch, log, (b) => { entry.batch = b; }, profile); }
+        catch (e) { log(`ERROR: ${(e as Error).message}`); }
+        finally { entry.done = true; batchRunning = false; }
+      })();
       return json(res, 200, { id: entry.batch.id });
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/batches/")) {
       const b = batches.get(url.pathname.split("/").pop()!);
-      return b ? json(res, 200, { items: b.batch.items, log: b.log, done: b.done }) : json(res, 404, { error: "no such batch" });
+      return b ? json(res, 200, batchView(b)) : json(res, 404, { error: "no such batch" });
     }
     if (req.method === "GET" && url.pathname === "/api/history") {
       const db = await openHistory();
       if (!db) return json(res, 200, []);
-      const rows = db.prepare("SELECT id, platform, video, caption, status, posted_at FROM posts ORDER BY id DESC LIMIT 50").all();
+      const rows = db.prepare("SELECT id, platform, video, caption, status, posted_at FROM posts ORDER BY id DESC LIMIT 300").all();
       db.close();
-      return json(res, 200, rows);
+      // What happened, in the app's words, with a link to that platform's list of the person's posts.
+      return json(res, 200, rows.map((r: any) => {
+        const label = PLATFORMS[r.platform]?.label ?? r.platform;
+        const failed = String(r.status).startsWith("error");
+        const kind = r.status === "posted" ? "posted" : r.status === "dry-run" ? "preview" : r.status === "deleted" ? "deleted" : failed ? "failed" : "other";
+        return { ...r, name: displayName(r.video), label, kind, link: APP_PLATFORMS[r.platform]?.postsUrl ?? "", fix: failed ? explain(String(r.status).replace(/^error:\s*/, ""), label) : null };
+      }));
     }
     json(res, 404, { error: "not found" });
   } catch (e) {
@@ -294,7 +370,7 @@ export function startServer(
     server.listen(PORT, host, () => {
       server.removeListener("error", onErr);
       const u = `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${PORT}`;
-      console.log(`Northbound Poster dashboard: ${u}  (Chrome CDP :${CDP_PORT})`);
+      console.log(`${APP_NAME} by Northbound: ${u}  (Chrome CDP :${CDP_PORT})`);
       if (opts.open !== false && !process.argv.includes("--no-open")) {
         spawn("open", [u], { stdio: "ignore" }).unref();
       }
