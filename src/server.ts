@@ -169,14 +169,67 @@ function batchView(entry: BatchRun) {
   };
 }
 
+/* ---- who may talk to this server -------------------------------------------------
+ * The app listens on this computer only, but "only this computer" includes every web
+ * page open in every browser on it. Without the checks below, any site the person
+ * visits could quietly send a form to http://127.0.0.1:4747/api/batch and publish its
+ * own video from their accounts, or sign them out. Three rules stop that:
+ *
+ *   1. The Host header must be this server's own address. A site that points its own
+ *      domain name at 127.0.0.1 (DNS rebinding) fails here.
+ *   2. A request that says which page sent it (Origin) must have been sent by the
+ *      app's own page. Browsers always add Origin to a cross-site POST.
+ *   3. A browser's own label for the request (Sec-Fetch-Site) must not be cross-site.
+ *
+ * A request with none of those headers is not from a web page at all (the CLI, a
+ * script on this Mac), and anything running on the Mac could drive Chrome directly
+ * anyway. Remote mode (an access key is set, for the phone link) is guarded by that
+ * key instead: the phone reaches it through a tunnel with a different address.
+ */
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY", // no other page may put the app in a frame and trick clicks onto it
+  "referrer-policy": "no-referrer",
+  "cross-origin-resource-policy": "same-origin",
+};
+const PAGE_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+
+export function allowedRequest(req: IncomingMessage, port: number, remote: boolean): { ok: true } | { ok: false; why: string } {
+  if (remote) return { ok: true };
+  const mine = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]);
+  const host = String(req.headers.host ?? "").toLowerCase();
+  if (!mine.has(host)) return { ok: false, why: "This address isn't the app's own." };
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && origin !== "") {
+    let from = "";
+    try { const u = new URL(origin); from = u.protocol === "http:" ? u.host.toLowerCase() : ""; } catch { from = ""; }
+    if (!mine.has(from)) return { ok: false, why: "Only the app's own page can do that." };
+  }
+  const site = String(req.headers["sec-fetch-site"] ?? "");
+  if (site === "cross-site" || site === "same-site") return { ok: false, why: "Only the app's own page can do that." };
+  return { ok: true };
+}
+
 function json(res: ServerResponse, code: number, body: unknown) {
-  res.writeHead(code, { "content-type": "application/json" });
+  res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store", ...SECURITY_HEADERS });
   res.end(JSON.stringify(body));
 }
 
+/** The most a single request may carry. Videos are big, so this is generous, but it is
+ *  not endless: a request is held in memory while it arrives. */
+const MAX_BODY = Number(process.env.POSTER_MAX_UPLOAD_MB ?? 4096) * 1024 * 1024;
+class TooBig extends Error {}
+
 async function readBody(req: IncomingMessage): Promise<Buffer> {
+  const declared = Number(req.headers["content-length"] ?? 0);
+  if (declared > MAX_BODY) throw new TooBig();
   const chunks: Buffer[] = [];
-  for await (const c of req) chunks.push(c as Buffer);
+  let size = 0;
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > MAX_BODY) throw new TooBig();
+    chunks.push(c as Buffer);
+  }
   return Buffer.concat(chunks);
 }
 
@@ -196,8 +249,10 @@ const server = createServer(async (req, res) => {
       } catch { return json(res, 404, { error: "no logo" }); }
     }
     if (!authorized(req, url)) return json(res, 401, { error: "Unauthorized — this link needs its access key." });
+    const allowed = allowedRequest(req, PORT, !!ACCESS_TOKEN);
+    if (!allowed.ok) return json(res, 403, { error: allowed.why });
     if (req.method === "GET" && url.pathname === "/") {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": PAGE_CSP, ...SECURITY_HEADERS });
       return res.end(dashboardHtml());
     }
     if (req.method === "GET" && (url.pathname === "/m" || url.pathname === "/m/")) {
@@ -371,7 +426,9 @@ const server = createServer(async (req, res) => {
     }
     json(res, 404, { error: "not found" });
   } catch (e) {
-    json(res, 500, { error: (e as Error).message });
+    if (e instanceof TooBig) return json(res, 413, { error: "That's more video than the app can take in one go. Post fewer clips at a time." });
+    if (e instanceof SyntaxError) return json(res, 400, { error: "That request wasn't understood." });
+    json(res, 500, { error: (e as Error).message.split("\n")[0] });
   }
 });
 

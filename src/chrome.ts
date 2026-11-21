@@ -75,7 +75,10 @@ export async function launchChrome(startUrl: string, profile: Profile = defaultP
     [
       `--remote-debugging-port=${port}`,
       "--remote-debugging-address=127.0.0.1",
-      "--remote-allow-origins=*",
+      // Only a page served from this debugging port itself may open a debugging socket.
+      // (It used to be "*", which let any web page try.) The app's own connections are
+      // made from Node, which sends no Origin and is always allowed.
+      `--remote-allow-origins=http://127.0.0.1:${port}`,
       `--user-data-dir=${dir}`,
       "--no-first-run",
       "--no-default-browser-check",
@@ -104,9 +107,29 @@ export function killToolChrome(profile: Profile = defaultProfile): void {
         `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${PROFILE_DIR.replace(/\\/g, "\\\\")}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
       ]);
     } else {
-      spawnSync("pkill", ["-f", `--user-data-dir=${PROFILE_DIR}`]);
+      // The "--" matters: without it pkill reads the pattern itself as an option, refuses
+      // it, and kills nothing, so a stuck Chrome was never actually closed and the
+      // "close ours and reopen" recovery in attach() could not work.
+      spawnSync("pkill", ["-f", "--", `--user-data-dir=${PROFILE_DIR}`]);
     }
   } catch {}
+}
+
+/** Close OUR Chrome, wait until it has really gone, open it again and connect. Chrome
+ *  takes a moment to exit; launching while its port still answers just reconnects to the
+ *  window that is closing, which fails the same way. Tried twice before giving up. */
+async function reopenAndConnect(profile: Profile, startUrl: string): Promise<Browser> {
+  let last: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    killToolChrome(profile);
+    const gone = Date.now() + 10_000;
+    while (Date.now() < gone && (await cdpAlive(profile.port))) await sleep(250);
+    await sleep(400);
+    await launchChrome(startUrl, profile);
+    try { return await chromium.connectOverCDP(`http://127.0.0.1:${profile.port}`); }
+    catch (e) { last = e; }
+  }
+  throw last;
 }
 
 export interface Attached {
@@ -125,10 +148,7 @@ export async function attach(profile: Profile = defaultProfile, startUrl = "abou
     // A Chrome left over from an earlier attach can refuse context management.
     // Same fix RnR's _repair_window uses: close ONLY our profile's Chrome and relaunch.
     if (!String((e as Error).message).includes("Browser context management")) throw e;
-    killToolChrome(profile);
-    await sleep(1500);
-    await launchChrome(startUrl, profile);
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+    browser = await reopenAndConnect(profile, startUrl);
   }
   const context = browser.contexts()[0] ?? (await browser.newContext());
   const page = context.pages()[0] ?? (await context.newPage());

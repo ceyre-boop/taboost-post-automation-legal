@@ -11,7 +11,7 @@
     "tip": "node src/weekly/tip-build.ts",
     "weekly:list": "node src/weekly/list.ts",
     "weekly:approve": "node src/weekly/approve.ts",
-    "test": "node --test src/weekly/weekly.test.ts src/app.test.ts src/devices.test.ts",
+    "test": "node --test src/weekly/weekly.test.ts src/app.test.ts src/devices.test.ts src/security.test.ts",
     "typecheck": "bunx tsc --noEmit",
     "dashboard": "node src/server.ts",
     "remote": "node src/remote.ts",
