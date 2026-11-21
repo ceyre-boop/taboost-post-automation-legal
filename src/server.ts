@@ -3,14 +3,14 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import { APP_DIR, CDP_PORT, defaultProfile, type Profile } from "./config.ts";
+import { APP_DIR, CDP_PORT, accountProfile, defaultProfile, type Profile } from "./config.ts";
 import { getDevice, createDevice, profileOf, type Device } from "./devices.ts";
 import { openView, getView, closeView } from "./remote-view.ts";
 import { withBrowser, pageFor } from "./browser.ts";
 import { PLATFORMS, getPlatform } from "./platforms/index.ts";
 import { buildBatch, runBatch as runBatchEngine, type Batch } from "./batch.ts";
-import { openHistory, recordPost } from "./history.ts";
-import { APP_NAME, APP_PLATFORMS, appPlatformIds, isAppPlatform, cleanSpace, disconnect, displayName, explain, readSettings, uploadName, writeSettings } from "./app.ts";
+import { openHistory, recordPost, setHistoryAccount } from "./history.ts";
+import { APP_NAME, APP_PLATFORMS, addSet, allSets, appPlatformIds, isAppPlatform, cleanSpace, disconnect, displayName, explain, readSettings, uploadName, writeSettings } from "./app.ts";
 
 const UPLOADS = join(APP_DIR, "uploads");
 
@@ -62,7 +62,8 @@ function deviceFor(req: IncomingMessage, url: URL): Device | null {
  *  rather than silently falling back to the default profile's accounts. */
 function profileFor(req: IncomingMessage, url: URL): Profile {
   const raw = (req.headers["x-poster-device"] as string) || url.searchParams.get("d");
-  if (!raw) return defaultProfile;
+  // On this computer: whichever set of accounts the person has switched to.
+  if (!raw) return accountProfile(readSettings().activeSet);
   const d = getDevice(raw);
   if (!d) throw new Error("This phone isn't registered any more. Reopen the link and enter your name.");
   return profileOf(d);
@@ -81,7 +82,7 @@ async function status(profile: Profile = defaultProfile) {
   }, "about:blank", profile);
 }
 
-async function openLogin(platformId: string) {
+async function openLogin(platformId: string, profile: Profile = defaultProfile) {
   const p = getPlatform(platformId);
   await withBrowser(async (ctx) => {
     const page = await pageFor(ctx, p.host);
@@ -90,7 +91,7 @@ async function openLogin(platformId: string) {
     const s = await ctx.newCDPSession(page);
     const { windowId } = await s.send("Browser.getWindowForTarget");
     await s.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } });
-  }, p.loginUrl);
+  }, p.loginUrl, profile);
 }
 
 function runJob(video: string, caption: string, platformIds: string[], live: boolean, profile: Profile = defaultProfile, deleteAfter = false): Job {
@@ -179,6 +180,7 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+setHistoryAccount(readSettings().activeSet); // history rows carry the set they went out from
 let PORT = Number(process.env.POSTER_PORT ?? 4747);
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://127.0.0.1:${PORT}`);
@@ -212,10 +214,26 @@ const server = createServer(async (req, res) => {
       }
     }
     if (req.method === "GET" && url.pathname === "/api/app") {
-      return json(res, 200, { name: APP_NAME, settings: readSettings(), platforms: appPlatformIds().map((id) => ({ id, label: PLATFORMS[id].label })), batchRunning });
+      const s = readSettings();
+      setHistoryAccount(s.activeSet);
+      return json(res, 200, { name: APP_NAME, settings: s, sets: allSets(s), platforms: appPlatformIds().map((id) => ({ id, label: PLATFORMS[id].label })), batchRunning });
     }
     if (req.method === "POST" && url.pathname === "/api/settings") {
-      return json(res, 200, writeSettings(JSON.parse((await readBody(req)).toString() || "{}")));
+      // Only the plain preferences are set here; sets have their own routes below.
+      const { onboarded, spaceSec, mainName } = JSON.parse((await readBody(req)).toString() || "{}");
+      return json(res, 200, writeSettings({ onboarded, spaceSec, mainName }));
+    }
+    if (req.method === "POST" && url.pathname === "/api/sets") {
+      const { name } = JSON.parse((await readBody(req)).toString() || "{}");
+      try { const { settings, set } = addSet(String(name ?? "")); return json(res, 200, { set, sets: allSets(settings) }); }
+      catch (e) { return json(res, 400, { error: (e as Error).message }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/sets/active") {
+      if (batchRunning) return json(res, 409, { error: "Posts are going out right now. Switch when they finish." });
+      const { id } = JSON.parse((await readBody(req)).toString() || "{}");
+      const s = writeSettings({ activeSet: String(id ?? "") });
+      setHistoryAccount(s.activeSet);
+      return json(res, 200, { activeSet: s.activeSet, sets: allSets(s) });
     }
     if (req.method === "POST" && url.pathname === "/api/disconnect") {
       const { platform } = JSON.parse((await readBody(req)).toString() || "{}");
@@ -266,7 +284,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/login") {
       const { platform } = JSON.parse((await readBody(req)).toString() || "{}");
-      await openLogin(platform);
+      await openLogin(platform, profileFor(req, url));
       return json(res, 200, { ok: true });
     }
     if (req.method === "POST" && url.pathname === "/api/post") {
@@ -340,7 +358,8 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/history") {
       const db = await openHistory();
       if (!db) return json(res, 200, []);
-      const rows = db.prepare("SELECT id, platform, video, caption, status, posted_at FROM posts ORDER BY id DESC LIMIT 300").all();
+      // History is per set of accounts: you see what went out from the set you're in.
+      const rows = db.prepare("SELECT id, platform, video, caption, status, posted_at FROM posts WHERE account = ? ORDER BY id DESC LIMIT 300").all(readSettings().activeSet);
       db.close();
       // What happened, in the app's words, with a link to that platform's list of the person's posts.
       return json(res, 200, rows.map((r: any) => {

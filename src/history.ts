@@ -18,6 +18,11 @@ async function loadCtor(): Promise<(new (path: string) => any) | null> {
   return Ctor;
 }
 
+/** Which set of accounts is posting right now ("" is the main set). The server sets this
+ *  when the person switches; one batch runs at a time, so it cannot change mid-post. */
+let currentAccount = "";
+export function setHistoryAccount(id: string): void { currentAccount = id; }
+
 /** Open the history DB, or null if sqlite isn't available in this runtime. */
 export async function openHistory(): Promise<any | null> {
   const C = await loadCtor();
@@ -32,6 +37,9 @@ export async function openHistory(): Promise<any | null> {
       caption TEXT,
       status TEXT NOT NULL,
       posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+    // Added later: older installs get the column the first time they open the file.
+    const cols = db.prepare("PRAGMA table_info(posts)").all().map((c: any) => c.name);
+    if (!cols.includes("account")) db.exec("ALTER TABLE posts ADD COLUMN account TEXT NOT NULL DEFAULT ''");
     return db;
   } catch {
     return null;
@@ -44,7 +52,7 @@ export function recordPost(platform: string, video: string, caption: string, sta
     try {
       const db = await openHistory();
       if (!db) return;
-      db.prepare("INSERT INTO posts (platform, video, caption, status) VALUES (?, ?, ?, ?)").run(platform, video, caption, status);
+      db.prepare("INSERT INTO posts (platform, video, caption, status, account) VALUES (?, ?, ?, ?, ?)").run(platform, video, caption, status, currentAccount);
       db.close();
     } catch {}
   })();

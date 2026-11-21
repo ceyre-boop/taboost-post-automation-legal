@@ -52,6 +52,9 @@
   .nav button[aria-current="page"] { background: var(--accent-soft); color: var(--accent-strong); }
   .nav svg { width: 18px; height: 18px; flex: none; }
   .nav .count { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 650; text-align: center; }
+  .setbox { padding: 0 6px 14px; display: grid; gap: 5px; }
+  .setbox label { font-size: 11.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding-left: 2px; }
+  .setbox select { appearance: none; -webkit-appearance: none; width: 100%; min-height: 38px; padding: 0 32px 0 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--panel-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.500 6 6.500l5-5' fill='none' stroke='%237b8493' stroke-width='1.800' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 11px center / 11px; font-weight: 600; cursor: pointer; }
   .rail-foot { margin-top: auto; padding: 10px 8px 0; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); }
   main { padding: 34px clamp(18px, 4vw, 48px) 80px; min-width: 0; }
   .page { max-width: 980px; margin: 0 auto; }
@@ -61,6 +64,7 @@
     .shell { grid-template-columns: 1fr; }
     .rail { position: static; height: auto; flex-direction: row; align-items: center; padding: 10px 12px; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
     .brand { padding: 0 8px 0 0; } .brand b { display: none; }
+    .setbox { padding: 0 8px 0 0; min-width: 150px; } .setbox label { display: none; }
     .nav { grid-auto-flow: column; } .nav button span.lbl { display: none; }
     .rail-foot { display: none; }
   }
@@ -247,6 +251,7 @@
 <div class="shell">
   <aside class="rail">
     <div class="brand"><span class="mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 25 16 6l9 19-9-6z" fill="#fff"/></svg></span><b>Post Everywhere</b></div>
+    <div class="setbox"><label for="set">Posting as</label><select id="set" aria-label="Which set of accounts to post from"></select></div>
     <nav class="nav" aria-label="Screens">
       <button data-go="post"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">Post</span></button>
       <button data-go="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="7" rx="1.500"/><rect x="14" y="4" width="7" height="7" rx="1.500"/><rect x="3" y="14" width="7" height="7" rx="1.500"/><rect x="14" y="14" width="7" height="7" rx="1.500"/></svg><span class="lbl">Progress</span><span class="count" id="nav-live" hidden></span></button>
@@ -279,7 +284,7 @@
 
       <div class="section">
         <h2>Where it goes</h2>
-        <p class="muted">Only connected accounts can be picked.</p>
+        <p class="muted" id="where-sub">Only connected accounts can be picked.</p>
         <div class="chips" id="chips"><div class="skeleton" style="width:100%;height:40px"></div></div>
       </div>
 
@@ -333,7 +338,7 @@
 
     <!-- ACCOUNTS -->
     <div class="page" id="v-accounts" hidden>
-      <div class="head"><div><h1>Accounts</h1><p class="muted">You sign in yourself, in the app's own Chrome window. The app never sees a password.</p></div><button class="btn" id="acct-refresh">Check again</button></div>
+      <div class="head"><div><h1>Accounts</h1><p class="muted" id="acct-sub">You sign in yourself, in the app's own Chrome window. The app never sees a password.</p></div><button class="btn" id="acct-refresh">Check again</button></div>
       <div id="acct-chrome"></div>
       <div class="accounts" id="accounts"></div>
     </div>
@@ -343,6 +348,14 @@
 <dialog id="confirm">
   <div class="body"><h2 id="cf-title"></h2><p class="muted" id="cf-text"></p><ul id="cf-list"></ul></div>
   <div class="acts"><button class="btn" id="cf-no">Cancel</button><button class="btn primary" id="cf-yes">Post now</button></div>
+</dialog>
+<dialog id="newset">
+  <form method="dialog" id="newset-form">
+    <div class="body"><h2>Add a set of accounts</h2><p class="muted">A set is a separate group of sign-ins with its own Chrome window, so a business never mixes with your personal accounts.</p>
+      <p style="margin-top:14px"><label class="small muted" for="newset-name">Name</label><input class="field" id="newset-name" maxlength="30" placeholder="For example: My business" autocomplete="off" required style="margin-top:4px"></p>
+      <p class="small" id="newset-err" style="color:var(--bad)" hidden></p></div>
+    <div class="acts"><button class="btn" type="button" id="newset-no">Cancel</button><button class="btn primary" type="submit">Add and switch</button></div>
+  </form>
 </dialog>
 <div class="toast" id="toast" hidden role="status"></div>
 
@@ -386,6 +399,40 @@
     window.scrollTo(0, 0);
   }
   $$('.nav button').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
+
+  /* ---------------- sets of accounts ---------------- */
+  const setName = () => state.app.sets.find((s) => s.id === state.app.settings.activeSet)?.name || state.app.sets[0].name;
+  function renderSets() {
+    const sel = $('#set');
+    sel.innerHTML = state.app.sets.map((s) => `<option value="${esc(s.id)}" ${s.id === state.app.settings.activeSet ? 'selected' : ''}>${esc(s.name)}</option>`).join('') + '<option value="__new">+ Add a set…</option>';
+    const sub = $('#acct-sub'); if (sub) sub.textContent = `Showing the accounts in “${setName()}”. You sign in yourself, in the app's own Chrome window. The app never sees a password.`;
+    const where = $('#where-sub'); if (where) where.textContent = `Posting from “${setName()}”. Only connected accounts can be picked.`;
+  }
+  async function switchSet(id) {
+    try {
+      const r = await post('/api/sets/active', { id });
+      state.app.settings.activeSet = r.activeSet; state.app.sets = r.sets;
+    } catch (e) { toast(e.message); renderSets(); return; }
+    // A different set is a different Chrome window with different sign-ins.
+    state.status = null; state.statusAt = 0; state.picked = null; state.waiting.clear();
+    renderSets(); renderStatus();
+    await refreshStatus(true);
+    if (!$('#v-history').hidden) loadHistory();
+    toast(`Now posting as ${setName()}.`);
+    if (!connected().length && $('#onboard').hidden) go('accounts');
+  }
+  $('#set').addEventListener('change', (e) => {
+    if (e.target.value !== '__new') return switchSet(e.target.value);
+    renderSets(); $('#newset-err').hidden = true; $('#newset-name').value = ''; $('#newset').showModal();
+  });
+  $('#newset-no').addEventListener('click', () => $('#newset').close());
+  $('#newset-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const r = await post('/api/sets', { name: $('#newset-name').value });
+      state.app.sets = r.sets; $('#newset').close(); await switchSet(r.set.id);
+    } catch (err) { $('#newset-err').textContent = err.message; $('#newset-err').hidden = false; }
+  });
 
   /* ---------------- accounts ---------------- */
   const connected = () => (state.status && !state.status.error ? Object.entries(state.status).filter(([, s]) => s.loggedIn).map(([id]) => id) : []);
@@ -568,7 +615,7 @@
   $('#btn-post').addEventListener('click', () => {
     const n = state.clips.length, ids = [...state.picked];
     $('#cf-title').textContent = `Post ${plural(n, 'clip')} for real?`;
-    $('#cf-text').textContent = `This publishes ${plural(n * ids.length, 'post')} from your own accounts, ${spaceWords(spaceValue())}.`;
+    $('#cf-text').textContent = `This publishes ${plural(n * ids.length, 'post')} from your “${setName()}” accounts, ${spaceWords(spaceValue())}.`;
     $('#cf-list').innerHTML = ids.map((id) => `<li>${esc(state.status[id]?.label || id)}</li>`).join('');
     $('#confirm').showModal();
   });
@@ -674,7 +721,7 @@
     const saved = state.app.settings.spaceSec;
     ($(`input[name="space"][value="${saved}"]`) || $('input[name="space"][value="60"]')).checked = true;
     $('#space-warn').hidden = spaceValue() !== 0;
-    renderStatus(); renderClips();
+    renderSets(); renderStatus(); renderClips();
     try { const cur = await api('/api/batches/current'); if (cur) { state.batchId = cur.id; state.batch = cur; renderProgress(); if (!cur.done) pollBatch(); } } catch {}
     if (!state.app.settings.onboarded) { $('#onboard').hidden = false; onboardStep(1); go('post'); }
     else { const want = location.hash.slice(1); go(['post', 'progress', 'history', 'accounts'].includes(want) ? want : state.batch && !state.batch.done ? 'progress' : 'post'); }

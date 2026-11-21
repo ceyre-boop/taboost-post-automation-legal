@@ -26,13 +26,14 @@ test("each platform's sign-out covers the site its own login check looks at", ()
 
 test("a new person starts not set up, with spacing on", () => {
   const dir = mkdtempSync(join(tmpdir(), "pe-settings-"));
-  assert.deepEqual(readSettings(dir), { onboarded: false, spaceSec: 60 });
-  assert.deepEqual(writeSettings({ onboarded: true }, dir), { onboarded: true, spaceSec: 60 });
-  assert.deepEqual(writeSettings({ spaceSec: 120 }, dir), { onboarded: true, spaceSec: 120 });
-  assert.deepEqual(readSettings(dir), { onboarded: true, spaceSec: 120 });
+  const fresh = { onboarded: false, spaceSec: 60, mainName: "Main", sets: [], activeSet: "" };
+  assert.deepEqual(readSettings(dir), fresh);
+  assert.deepEqual(writeSettings({ onboarded: true }, dir), { ...fresh, onboarded: true });
+  assert.deepEqual(writeSettings({ spaceSec: 120 }, dir), { ...fresh, onboarded: true, spaceSec: 120 });
+  assert.deepEqual(readSettings(dir), { ...fresh, onboarded: true, spaceSec: 120 });
   assert.deepEqual(readdirSync(dir), ["settings.json"]);
-  // The settings file holds two plain values and nothing about any account.
-  assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(dir, "settings.json"), "utf8"))).sort(), ["onboarded", "spaceSec"]);
+  // The settings file holds preferences and set names, and nothing about any sign-in.
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(dir, "settings.json"), "utf8"))).sort(), ["activeSet", "mainName", "onboarded", "sets", "spaceSec"]);
 });
 
 test("spacing is off only when asked, and otherwise 15 seconds to 30 minutes", () => {
@@ -77,4 +78,28 @@ test("every failure gets a plain-English problem and fix", () => {
     // Plain words only: no code terms leak into what the person reads.
     assert.doesNotMatch(f.problem + f.fix, /locator|selector|timeout|CDP|exception|undefined|null/i, note);
   }
+});
+
+import { addSet, allSets } from "./app.ts";
+import { accountProfile, defaultProfile } from "./config.ts";
+
+test("sets of accounts: the main one, plus any the person adds, each with its own Chrome", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pe-sets-"));
+  assert.deepEqual(allSets(readSettings(dir)), [{ id: "", name: "Main" }]);
+  const { set } = addSet("Northbound", dir);
+  assert.deepEqual(set, { id: "northbound", name: "Northbound" });
+  assert.equal(addSet("My Business & Co.", dir).set.id, "my-business--co");
+  assert.throws(() => addSet("northbound", dir), /already have a set/);
+  assert.throws(() => addSet("   ", dir), /Give the set a name/);
+  assert.deepEqual(allSets(readSettings(dir)).map((s) => s.name), ["Main", "Northbound", "My Business & Co."]);
+  // Switching to a set that exists sticks; a made-up id falls back to the main set.
+  assert.equal(writeSettings({ activeSet: "northbound" }, dir).activeSet, "northbound");
+  assert.equal(writeSettings({ activeSet: "nope" }, dir).activeSet, "");
+  assert.equal(writeSettings({ mainName: "Personal" }, dir).mainName, "Personal");
+  // Different sets never share a Chrome profile folder or a port.
+  const a = accountProfile("northbound"), b = accountProfile("my-business--co");
+  assert.equal(accountProfile(""), defaultProfile);
+  assert.notEqual(a.dir, defaultProfile.dir); assert.notEqual(a.dir, b.dir);
+  assert.notEqual(a.port, defaultProfile.port);
+  assert.match(a.dir, /accounts\/northbound\/chrome-profile$/);
 });
