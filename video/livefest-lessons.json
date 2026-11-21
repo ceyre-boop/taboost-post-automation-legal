@@ -1,0 +1,27 @@
+[
+  {"tag":"LIVE FEST · BONUS HOUR","hook":"Bonus Hour is a fixed window, not a timer.","points":[
+    {"label":"When","body":"Round 1 only: 9:00–10:00 PM ET, everyone gets double points."},
+    {"label":"The trap","body":"Go LIVE at 9:50 and it still ends at 10:00. Start early."},
+    {"label":"No stacking","body":"A Double Blast doesn't add on top of Bonus Hour. Save it."}],
+   "takeaway":"Be LIVE by 9 PM ET.","handle":"@taboost.colin"},
+  {"tag":"LIVE FEST · DOUBLE BLAST","hook":"Your daily Double Blast expires at midnight.","points":[
+    {"label":"What it does","body":"Doubles gift and vote points for 30 minutes."},
+    {"label":"One at a time","body":"Only one Double Blast can run at once."},
+    {"label":"The trap","body":"The daily one is gone at midnight. Bonus ones you earn last to the Finale."}],
+   "takeaway":"Use it or lose it, every day.","handle":"@taboost.colin"},
+  {"tag":"LIVE FEST · GIFTS","hook":"Not every gift counts the same in LIVE Fest.","points":[
+    {"label":"FEST + Vault","body":"FEST and Vault gifts count DOUBLE points."},
+    {"label":"Names change","body":"Some slides show other gift names. The double rule stays the same."},
+    {"label":"Where to look","body":"The LIVE Fest banner in the TikTok app has the live rules and leaderboards."}],
+   "takeaway":"Ask for FEST gifts.","handle":"@taboost.colin"},
+  {"tag":"LIVE FEST · ROUND 2","hook":"US Round 2 moved. Check your dates.","points":[
+    {"label":"New start","body":"Nov 28, 12:00 AM ET (Nov 27, 9 PM PT)."},
+    {"label":"New end","body":"Dec 2, 12:00 AM ET (Dec 1, 9 PM PT)."},
+    {"label":"The trap","body":"Matches set on the old dates need to move."}],
+   "takeaway":"Round 2: Nov 28 to Dec 2.","handle":"@taboost.colin"},
+  {"tag":"LIVE FEST · MATCH BONUS","hook":"In Rounds 2 and 3, only your best match counts.","points":[
+    {"label":"Daily bonus","body":"Your highest score from a full 5-minute match is added each day."},
+    {"label":"Full matches","body":"It has to be a full 5 minutes. Matches are unlimited."},
+    {"label":"Midnight","body":"A match that crosses midnight counts for the earlier day."}],
+   "takeaway":"Play full matches, chase one big score.","handle":"@taboost.colin"}
+]
