@@ -46,7 +46,7 @@ test("fitX counts URLs as 23", () => {
 });
 
 test("line breaks get a space after a #tag or @mention", () => {
-  assert.deepEqual(captionLines("hi #tag\nnext @bob\nplain\nend #last"), ["hi #tag ", "next @bob ", "plain", "end #last"]);
+  assert.deepEqual(captionLines("hi #tag\nnext @bob\nplain\nend #last"), ["hi #tag ", "next @bob ", "plain", "end #last "]);
   assert.deepEqual(captionLines("a\r\nb"), ["a", "b"]);
 });
 

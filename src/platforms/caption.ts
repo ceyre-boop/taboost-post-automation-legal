@@ -84,7 +84,9 @@ const TAG_END = /[#@][^\s#@]+$/u;
  *  so the Enter that follows cannot pick an autocomplete suggestion. */
 export function captionLines(text: string): string[] {
   const lines = text.split(/\r?\n/);
-  return lines.map((l, i) => (i < lines.length - 1 && TAG_END.test(l) ? l + " " : l));
+  // A space after a #tag or @mention closes the site's suggestion list, which would otherwise
+  // take the next Enter, or sit over the Post button when the caption ends with a tag.
+  return lines.map((l) => (TAG_END.test(l) ? l + " " : l));
 }
 
 export interface KeyboardLike {

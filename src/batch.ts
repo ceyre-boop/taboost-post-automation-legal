@@ -132,7 +132,17 @@ export async function removeOnPage(
   const platform = getPlatform(platformId);
   if (!platform.remove) throw new Error(`${platform.label} has no delete step yet. Delete it by hand.`);
   const page = await pageFor(ctx, platform.host);
-  await platform.remove(page, caption, log);
+  // A post that just went up can take a minute to show in the account's own list. Look
+  // again a couple of times before calling it a failure; remove() never deletes anything
+  // it can't match to the caption, so trying again is safe.
+  for (let attempt = 1; ; attempt++) {
+    try { await platform.remove(page, caption, log); return; }
+    catch (e) {
+      if (attempt >= 3) throw e;
+      log(`Couldn't delete it yet (${(e as Error).message.split("\n")[0]}). Trying again in 20 seconds…`);
+      await sleep(20_000);
+    }
+  }
 }
 
 async function postOnPage(
