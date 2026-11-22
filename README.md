@@ -15,7 +15,21 @@ It was called TABOOST Poster until 2026-11-18. The repo keeps its old name so th
 - Seven platforms are offered. Pinterest is hidden until it has posted for real.
 - Nothing is tied to one person's machine: all data is in the user's own app folder (see below), and a brand-new empty folder goes through first-run cleanly.
 
-Tests: `npm test` (settings, naming, the platform list, the failure messages, devices, weekly) and `bun run typecheck`.
+Tests: `npm test` (settings, naming, the platform list, the failure messages, devices, weekly, the post maker, security, phone-link mode, the adapters' caption and site rules) and `bun run typecheck`.
+
+## The post maker (2026-11-21)
+
+The **Make** screen makes posts as well as posting them:
+
+1. **Your business, once:** name, what you do, who it's for, 3 to 10 facts you're happy to say, words never to use, the call to action, a brand colour, a feel (upbeat, calm, bold), 3 to 30 photos and an optional logo. iPhone HEIC photos are converted with the Mac's own `sips`. Saved per set of accounts in `<set folder>/maker/`.
+2. **Ideas:** each one is built on one fact and never repeats a post already made or thrown away.
+3. **Make:** the app writes the on-screen script and one caption per account, then renders a 1080×1920 MP4 (H.264 + AAC, 15 to 25 seconds) in a headless copy of the person's Chrome: photos with a slow zoom, burnt-in text inside the platforms' safe areas, brand colour, logo end card, and music the page generates itself (nothing licensed). About 5 to 10 seconds to render.
+4. **Review:** the video plays in the page, every caption can be changed (each checked against its platform's limit), then Preview or Post now through the normal batch engine.
+5. **Make and post by itself:** N posts a week, at most 2 a day. It can't be switched on in the first 24 hours after a set's accounts are first connected, and it's off until switched on.
+
+Checks before anything is shown (`src/maker/checks.ts`): every number must come from the person's facts, never-say words and unbacked claims (guaranteed, #1, licensed, cheapest…) are refused, on-screen text must fit, and every chosen account needs a caption within its limit. A script that fails goes back to the AI once with the problems; a second failure makes nothing and says why.
+
+The AI follows `HOSTING.md`: Northbound hosting by default, or the person's own API key; never the Max plan. Every request is logged with its estimated cost in `usage.jsonl`.
 
 ## Where it stands (2026-11-18)
 

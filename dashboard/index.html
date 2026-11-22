@@ -11,7 +11,7 @@
     --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f1f3f6; --line: #e3e6ec; --line-strong: #cfd4dd;
     --ink: #14171c; --ink-2: #4b5360; --ink-3: #5b6472;
     --accent: #4f5bd5; --accent-ink: #ffffff; --accent-soft: #eceefb; --accent-strong: #3f49b8;
-    --ok: #17804a; --ok-soft: #e4f4eb; --warn: #9a6400; --warn-soft: #fdf1d8; --bad: #c0362c; --bad-soft: #fbe9e7; --info: #2f6bd6; --info-soft: #e6effd;
+    --ok: #136f40; --ok-soft: #e4f4eb; --warn: #9a6400; --warn-soft: #fdf1d8; --bad: #c0362c; --bad-soft: #fbe9e7; --info: #2f6bd6; --info-soft: #e6effd;
     --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
     --radius: 14px;
     color-scheme: light;
@@ -206,6 +206,44 @@
   dialog ul { margin: 12px 0 0; padding-left: 18px; color: var(--ink-2); }
   dialog .acts { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 22px 20px; }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 40; padding: 11px 16px; border-radius: 12px; background: var(--ink); color: var(--bg); font-weight: 600; box-shadow: var(--shadow); max-width: min(560px, calc(100vw - 32px)); }
+  /* ---- make ---- */
+  .mk-grid { display: grid; gap: 14px; }
+  .mk-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; margin-top: 14px; }
+  .mk-form .wide { grid-column: 1 / -1; }
+  .mk-form label { display: grid; gap: 5px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+  .mk-form .hint { font-weight: 400; font-size: 12.5px; color: var(--ink-3); }
+  .inp { width: 100%; min-height: 40px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--panel); color: var(--ink); }
+  textarea.inp { resize: vertical; min-height: 84px; line-height: 1.45; }
+  .inp:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input[type="color"].inp { padding: 4px; height: 40px; width: 72px; cursor: pointer; }
+  .photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; margin-top: 10px; }
+  .ph { position: relative; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; background: var(--panel-2); border: 1px solid var(--line); }
+  .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ph button { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(0,0,0,.62); color: #fff; cursor: pointer; font-size: 15px; line-height: 1; }
+  .ph.add { display: grid; place-items: center; border: 2px dashed var(--line-strong); cursor: pointer; color: var(--accent-strong); font-weight: 650; font-size: 13px; text-align: center; padding: 8px; background: transparent; }
+  .ph.add:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .ph.logo { aspect-ratio: 1; }
+  .ideas { display: grid; gap: 10px; margin-top: 12px; }
+  .idea { display: flex; gap: 14px; align-items: center; padding: 14px 16px; }
+  .idea .t { flex: 1; min-width: 0; }
+  .idea .t b { display: block; }
+  .made { display: grid; grid-template-columns: 200px 1fr; gap: 20px; padding: 18px; }
+  .made video, .made .poster { width: 200px; aspect-ratio: 9 / 16; border-radius: 12px; background: #000; object-fit: cover; display: block; }
+  .made .poster { display: grid; place-items: center; color: #c9cbd3; font-size: 13px; text-align: center; padding: 14px; background: linear-gradient(160deg, #1d2128, #0e1014); }
+  .made .body { min-width: 0; display: grid; gap: 12px; align-content: start; }
+  .script { padding: 12px 14px; border-radius: 10px; background: var(--panel-2); font-size: 14px; }
+  .script b { display: block; font-size: 15.5px; margin-bottom: 4px; }
+  .script li { margin: 2px 0; }
+  .script ul { margin: 4px 0 6px; padding-left: 18px; }
+  .capbox summary { cursor: pointer; font-weight: 600; color: var(--accent-strong); padding: 6px 0; }
+  .capbox[open] summary { margin-bottom: 8px; }
+  .caps { display: grid; gap: 10px; }
+  .cap { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+  .cap .row b { font-size: 14px; }
+  .cap .count { margin-left: auto; font-size: 12.5px; color: var(--ink-3); }
+  .cap .count.over { color: var(--bad); font-weight: 650; }
+  .lockline { font-size: 13px; color: var(--warn); margin-top: 6px; }
+  @media (max-width: 760px) { .mk-form { grid-template-columns: 1fr; } .made { grid-template-columns: 1fr; } .made video, .made .poster { width: 100%; max-width: 260px; } }
 </style>
 </head>
 <body>
@@ -255,6 +293,7 @@
     <div class="setbox"><label for="set">Posting as</label><select id="set" aria-label="Which set of accounts to post from"></select></div>
     <nav class="nav" aria-label="Screens">
       <button data-go="post"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">Post</span></button>
+      <button data-go="make"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg><span class="lbl">Make</span><span class="count" id="nav-made" hidden>0</span></button>
       <button data-go="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="7" rx="1.500"/><rect x="14" y="4" width="7" height="7" rx="1.500"/><rect x="3" y="14" width="7" height="7" rx="1.500"/><rect x="14" y="14" width="7" height="7" rx="1.500"/></svg><span class="lbl">Progress</span><span class="count" id="nav-live" hidden></span></button>
       <button data-go="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="lbl">History</span></button>
       <button data-go="accounts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.500-4 4.500-5.500 8-5.500s6.500 1.500 8 5.500"/></svg><span class="lbl">Accounts</span></button>
@@ -309,6 +348,59 @@
       </div>
     </div>
 
+    <!-- MAKE -->
+    <div class="page" id="v-make" hidden>
+      <div class="head"><div><h1>Make a post</h1><p class="muted">The app writes a short video from your photos and facts, with a caption for each account. You watch it and choose before anything goes out.</p></div></div>
+      <div id="mk-ai"></div>
+
+      <div class="card pad" id="mk-brief-card">
+        <div class="row" style="justify-content:space-between"><h2>Your business</h2><button class="btn sm" id="mk-brief-edit" hidden>Edit</button></div>
+        <p class="muted small" id="mk-brief-sum" style="margin-top:4px">Tell the app about your business once. Every post is built from this, and only the facts you give here can appear in one.</p>
+        <form id="mk-brief" class="mk-form" autocomplete="off">
+          <label>Business name<input class="inp" id="mk-business" maxlength="80" required></label>
+          <label>Who it's for<input class="inp" id="mk-audience" maxlength="160" placeholder="Homeowners in Lansing"></label>
+          <label class="wide">What you do<input class="inp" id="mk-what" maxlength="300" placeholder="We repair and replace roofs." required></label>
+          <label class="wide">Facts you're happy to say <span class="hint">One per line, 3 to 10. Any number in a post must come from here.</span><textarea class="inp" id="mk-facts" rows="4" placeholder="We've replaced 412 roofs since 2015&#10;Most repairs are done in one day&#10;We clean up the same day"></textarea></label>
+          <label>What people should do <span class="hint">Shown at the end of every video.</span><input class="inp" id="mk-cta" maxlength="80" placeholder="Call for a free quote" required></label>
+          <label>Words never to use <span class="hint">One per line. Optional.</span><textarea class="inp" id="mk-avoid" rows="2" style="min-height:40px"></textarea></label>
+          <label>Brand colour<input type="color" class="inp" id="mk-color" value="#4f5bd5"></label>
+          <div><span class="small" style="font-weight:600;color:var(--ink-2)">Feel</span>
+            <div class="seg" id="mk-mood" role="radiogroup" aria-label="How the video feels" style="margin-top:5px">
+              <label><input type="radio" name="mood" value="upbeat" checked><span>Upbeat</span></label>
+              <label><input type="radio" name="mood" value="calm"><span>Calm</span></label>
+              <label><input type="radio" name="mood" value="bold"><span>Bold</span></label>
+            </div></div>
+          <p class="small wide" id="mk-brief-err" role="alert" style="color:var(--bad)" hidden></p>
+          <div class="wide row"><button class="btn primary" type="submit">Save</button></div>
+        </form>
+        <div class="section" style="margin-top:20px">
+          <h2>Photos</h2>
+          <p class="muted small" id="mk-photo-sub">3 to 30 photos of your work, your team or your place. iPhone photos are fine. Each video uses a few of them.</p>
+          <div class="photos" id="mk-photos"></div>
+          <input type="file" id="mk-pick" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden>
+          <input type="file" id="mk-pick-logo" accept="image/jpeg,image/png,image/webp" hidden>
+          <div class="row" style="margin-top:12px"><span class="small muted">Logo (optional, shown on the last card):</span><div class="photos" id="mk-logo" style="grid-template-columns:72px;margin:0"></div></div>
+        </div>
+      </div>
+
+      <div class="card pad" style="margin-top:14px">
+        <div class="row" style="justify-content:space-between"><h2>Ideas</h2><button class="btn primary" id="mk-suggest">Suggest ideas</button></div>
+        <p class="muted small" style="margin-top:4px">Each idea is built on one of your facts, and none repeats a post you've already made.</p>
+        <div class="section" style="margin-top:12px"><span class="small" style="font-weight:600;color:var(--ink-2)">Write captions for</span><div class="chips" id="mk-chips" style="margin-top:6px"></div></div>
+        <div class="ideas" id="mk-ideas"></div>
+      </div>
+
+      <div class="section"><h2>Made for you</h2><p class="muted" id="mk-made-sub">Nothing made yet.</p><div class="mk-grid" id="mk-made"></div></div>
+
+      <div class="card pad" style="margin-top:20px">
+        <div class="row" style="justify-content:space-between;align-items:start"><div><h2>Make and post by itself</h2><p class="muted small" id="mk-auto-sub" style="margin-top:4px"></p></div><label class="switch"><input type="checkbox" id="mk-auto"><i></i><span class="small muted" id="mk-auto-word">Off</span></label></div>
+        <div class="row" style="margin-top:12px"><label class="small" for="mk-perweek" style="font-weight:600;color:var(--ink-2)">Posts a week</label><select class="inp" id="mk-perweek" style="width:auto"><option>1</option><option>2</option><option selected>3</option><option>5</option><option>7</option></select></div>
+        <div class="chips" id="mk-auto-chips" style="margin-top:10px"></div>
+        <p class="lockline" id="mk-auto-lock" hidden></p>
+      </div>
+      <p class="small muted" id="mk-usage" style="margin-top:14px"></p>
+    </div>
+
     <!-- PROGRESS -->
     <div class="page" id="v-progress" hidden>
       <div class="head"><div aria-live="polite"><h1 id="pg-title">Progress</h1><p class="muted" id="pg-sub"></p></div><div class="row"><button class="btn" id="pg-retry" hidden>Try failed again</button><button class="btn primary" id="pg-new" hidden>New post</button></div></div>
@@ -334,6 +426,7 @@
           <label><input type="radio" name="hf" value="failed"><span>Failed</span></label>
         </div>
       </div>
+      <p class="small muted row" id="up-line" style="margin:-8px 0 14px" hidden><span id="up-text"></span><button class="btn sm quiet" id="up-clear">Clear uploaded copies</button></p>
       <div id="history"></div>
     </div>
 
@@ -357,6 +450,10 @@
       <p class="small" id="newset-err" style="color:var(--bad)" hidden></p></div>
     <div class="acts"><button class="btn" type="button" id="newset-no">Cancel</button><button class="btn primary" type="submit">Add and switch</button></div>
   </form>
+</dialog>
+<dialog id="mk-confirm">
+  <div class="body"><h2 id="mk-cf-title"></h2><p class="muted" id="mk-cf-text"></p><ul id="mk-cf-list"></ul></div>
+  <div class="acts"><button class="btn" id="mk-cf-no">Cancel</button><button class="btn primary" id="mk-cf-yes">Post now</button></div>
 </dialog>
 <div class="toast" id="toast" hidden role="status"></div>
 
@@ -391,10 +488,11 @@
 
   /* ---------------- navigation ---------------- */
   function go(view) {
-    for (const v of ['post', 'progress', 'history', 'accounts']) $(`#v-${v}`).hidden = v !== view;
+    for (const v of ['post', 'make', 'progress', 'history', 'accounts']) $(`#v-${v}`).hidden = v !== view;
     $$('.nav button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.go === view));
     $$('.nav button[aria-current]').forEach((b) => b.setAttribute('aria-current', 'page'));
-    if (view === 'history') loadHistory();
+    if (view === 'history') { loadHistory(); renderUploads(); }
+    if (view === 'make') { refreshStatus().then(() => { if (mk.s) renderMaker(); }); loadMaker(); }
     if (view === 'accounts' || view === 'post') refreshStatus();
     history.replaceState(null, '', `#${view}`);
     window.scrollTo(0, 0);
@@ -624,7 +722,7 @@
   $('#cf-yes').addEventListener('click', () => { $('#confirm').close(); send(true); });
 
   /* ---------------- progress ---------------- */
-  const WORD = { pending: ['Waiting', ''], posting: ['Posting', 'info busy'], done: ['Done', 'ok'], error: ['Failed', 'bad'], skipped: ['Skipped', ''] };
+  const WORD = { pending: ['Waiting', ''], posting: ['Posting', 'info busy'], done: ['Done', 'ok'], error: ['Failed', 'bad'], skipped: ['Skipped', ''], unconfirmed: ['Check it', 'warn'] };
   let pollTimer;
   async function pollBatch() {
     clearTimeout(pollTimer);
@@ -679,7 +777,7 @@
           ${i.fix.action === 'connect' ? '<button class="btn sm primary" data-go-view="accounts">Open Accounts</button>' : ''}
           ${i.fix.action === 'add-clip' ? '<button class="btn sm primary" data-go-view="post">Back to Post</button>' : ''}
           ${i.fix.action === 'chrome' ? '<a class="btn sm primary" href="https://www.google.com/chrome/" target="_blank" rel="noopener">Get Chrome</a>' : ''}
-          ${i.postsUrl && /NOT DELETED/.test(i.note || '') ? `<a class="btn sm" href="${esc(i.postsUrl)}" target="_blank" rel="noopener">Open ${esc(i.label)}</a>` : ''}
+          ${i.postsUrl && (/NOT DELETED/.test(i.note || '') || i.status === 'unconfirmed') ? `<a class="btn sm" href="${esc(i.postsUrl)}" target="_blank" rel="noopener">Open ${esc(i.label)}</a>` : ''}
         </div>
         <details><summary>Details</summary><code>${esc(i.note || '')}</code></details>
       </div>`).join('');
@@ -692,7 +790,7 @@
   $('#pg-new').addEventListener('click', () => { for (const c of state.clips) URL.revokeObjectURL(c.url); state.clips = []; renderClips(); go('post'); });
 
   /* ---------------- history ---------------- */
-  const KIND = { posted: ['Posted', 'ok'], preview: ['Preview', 'info'], failed: ['Failed', 'bad'], deleted: ['Removed', ''], other: ['Other', ''] };
+  const KIND = { posted: ['Posted', 'ok'], preview: ['Preview', 'info'], failed: ['Failed', 'bad'], deleted: ['Removed', ''], check: ['Check it', 'warn'], other: ['Other', ''] };
   let rows = [];
   async function loadHistory() {
     try { rows = await api('/api/history'); } catch (e) { rows = []; toast(e.message); }
@@ -714,6 +812,205 @@
     $('#history').innerHTML = html + '</div>';
   }
   $('#hfilter').addEventListener('change', renderHistory);
+  const bytesWord = (b) => (b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b >= 1e6 ? Math.round(b / 1e6) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB');
+  async function renderUploads() {
+    try { state.app = { ...state.app, ...(await api('/api/app')) }; } catch { return; }
+    const u = state.app.uploads || { bytes: 0, files: 0 };
+    $('#up-line').hidden = !u.files;
+    $('#up-text').textContent = `Copies of clips you've posted take ${bytesWord(u.bytes)} on this Mac. Your own files are never touched.`;
+  }
+  $('#up-clear').addEventListener('click', async () => { try { const r = await post('/api/uploads/clear'); toast(r.removed ? `Cleared ${plural(r.removed, 'copy', 'copies')}.` : 'Nothing to clear: a post still needs them.'); renderUploads(); } catch (e) { toast(e.message); } });
+
+  /* ---------------- make ---------------- */
+  const mk = { s: null, picked: null, timer: 0, saving: new Set() };
+  const STATUS = { writing: ['Writing the script', 'info busy'], rendering: ['Making the video', 'info busy'], ready: ['Ready for you', 'ok'], posting: ['Posting', 'info busy'], posted: ['Posted', 'ok'], failed: ["Didn't work", 'bad'] };
+  const money = (n) => (n > 0 && n < 0.01 ? 'under 1 cent' : '$' + n.toFixed(2));
+  const labelOf = (id) => (state.app.platforms.find((p) => p.id === id)?.label || id).replace(/\s*\(.*\)$/, '');
+  const lines = (v) => v.split('\n').map((s) => s.trim()).filter(Boolean);
+
+  async function loadMaker() {
+    try { mk.s = await api('/api/maker'); } catch (e) { toast(e.message); return; }
+    renderMaker();
+    clearTimeout(mk.timer);
+    if (mk.s.made.some((m) => ['writing', 'rendering', 'posting'].includes(m.status))) mk.timer = setTimeout(() => { if (!$('#v-make').hidden) loadMaker(); }, 2000);
+  }
+
+  function renderAi() {
+    const ai = mk.s.ai, u = mk.s.usage;
+    $('#mk-usage').textContent = u.total.calls ? `AI use for making posts: ${plural(u.total.calls, 'request')}, about ${money(u.total.cost)} so far (${money(u.today.cost)} today). An estimate from the public price list.` : '';
+    if (ai.ready) { $('#mk-ai').innerHTML = ai.devMax ? '<div class="notice bad" style="margin-bottom:14px"><div><b>Developer mode.</b><span class="muted">The AI is this Mac\'s Claude Code. Never run a client\'s install like this.</span></div></div>' : ''; return; }
+    $('#mk-ai').innerHTML = `<div class="card pad" style="margin-bottom:14px"><h2>${ai.hostedConfigured || ai.mode === 'byo' ? 'The AI isn\'t ready' : 'One step first: add an API key'}</h2>
+      <p class="muted" style="margin-top:4px">${ai.mode === 'byo' || !ai.hostedConfigured ? `The maker writes with an Anthropic API key. <a href="https://console.anthropic.com/" target="_blank" rel="noopener">Create an Anthropic account</a>, add a payment method under <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">Billing</a>, make a key under <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">API keys</a>, and paste it here. It stays on this Mac. A post usually costs a few cents to write.` : esc(ai.problem)}</p>
+      <form id="mk-key" class="row" autocomplete="off" style="margin-top:12px"><label class="small" for="mk-key-in" style="font-weight:600;color:var(--ink-2)">Anthropic API key</label><input class="inp" type="password" id="mk-key-in" autocomplete="new-password" placeholder="sk-ant-…" style="flex:1;min-width:220px" required><button class="btn primary" type="submit">Save key</button></form>
+      <p class="small" id="mk-key-err" role="alert" style="color:var(--bad);margin-top:8px" hidden></p></div>`;
+  }
+
+  function renderBrief() {
+    const b = mk.s.brief;
+    const editing = !b || $('#mk-brief').dataset.open === '1';
+    $('#mk-brief').hidden = !editing;
+    $('#mk-brief-edit').hidden = editing;
+    $('#mk-brief-sum').textContent = b && !editing ? `${b.business} · ${plural(b.facts.length, 'fact')} · ends with “${b.cta}”` : 'Tell the app about your business once. Every post is built from this, and only the facts you give here can appear in one.';
+    if (b && !$('#mk-brief').dataset.filled) {
+      $('#mk-business').value = b.business; $('#mk-audience').value = b.audience; $('#mk-what').value = b.whatYouDo;
+      $('#mk-facts').value = b.facts.join('\n'); $('#mk-avoid').value = b.avoid.join('\n'); $('#mk-cta').value = b.cta;
+      $('#mk-color').value = b.color; ($(`input[name="mood"][value="${b.mood}"]`) || {}).checked = true;
+      $('#mk-brief').dataset.filled = '1';
+    }
+    const ph = mk.s.photos.filter((n) => !n.startsWith('logo.'));
+    $('#mk-photos').innerHTML = ph.map((n) => `<div class="ph"><img src="/api/maker/photo/${encodeURIComponent(n)}" alt="Your photo"><button type="button" data-rm="${esc(n)}" aria-label="Remove this photo">×</button></div>`).join('')
+      + (ph.length < mk.s.limits.photos.max ? `<button type="button" class="ph add" id="mk-add">+ Add photos</button>` : '');
+    $('#mk-photo-sub').textContent = `${mk.s.limits.photos.min} to ${mk.s.limits.photos.max} photos of your work, your team or your place. iPhone photos are fine. You have ${ph.length}.`;
+    $('#mk-logo').innerHTML = mk.s.logo ? `<div class="ph logo"><img src="/api/maker/photo/${encodeURIComponent(mk.s.logo)}?v=${Date.now()}" alt="Your logo"><button type="button" data-rm="${esc(mk.s.logo)}" aria-label="Remove the logo">×</button></div>` : `<button type="button" class="ph add logo" id="mk-add-logo">+ Logo</button>`;
+  }
+
+  function chipsHtml(name, chosen) {
+    const on = new Set(connected());
+    return state.app.platforms.map(({ id, label }) => `<label class="chip"><input type="checkbox" name="${name}" value="${esc(id)}" ${chosen.has(id) ? 'checked' : ''}>${badge(id, true)}${esc(label.replace(/\s*\(.*\)$/, ''))}${on.has(id) ? '' : ' <span class="small muted">(not connected)</span>'}</label>`).join('');
+  }
+
+  function renderIdeas() {
+    if (!mk.picked) mk.picked = new Set(connected().length ? connected() : state.app.platforms.map((p) => p.id));
+    $('#mk-chips').innerHTML = chipsHtml('mkp', mk.picked);
+    const blocked = mk.s.problem || !mk.s.ai.ready;
+    $('#mk-suggest').disabled = !!blocked;
+    $('#mk-suggest').title = mk.s.problem || (mk.s.ai.ready ? '' : 'Add an API key first');
+    $('#mk-ideas').innerHTML = mk.s.problem ? `<p class="muted small">${esc(mk.s.problem)}</p>` : mk.s.ideas.map((i, n) => `<div class="card idea"><div class="t"><b>${esc(i.title)}</b><span class="muted small">${esc(i.angle)}</span></div><button class="btn sm primary" data-make="${n}" ${mk.s.making || blocked ? 'disabled' : ''}>Make this</button></div>`).join('');
+  }
+
+  function capCount(id, c) { const full = (c.caption + (c.hashtags.length ? '\n\n' + c.hashtags.join(' ') : '')); return [...full].length; }
+
+  function madeHtml(m) {
+    const [word, cls] = STATUS[m.status] || [m.status, ''];
+    const media = m.video ? `<video src="${esc(m.video)}" ${m.thumb ? `poster="${esc(m.thumb)}"` : ''} controls playsinline preload="metadata" aria-label="The video for ${esc(m.idea.title)}"></video>` : `<div class="poster">${m.status === 'failed' ? 'No video' : 'The video appears here in about a minute'}</div>`;
+    const s = m.script;
+    const caps = (m.status === 'ready' || m.status === 'posted' || m.status === 'failed') && Object.keys(m.captions).length
+      ? `<details class="capbox"><summary>Captions for ${plural(m.platforms.filter((p) => m.captions[p]).length, 'account')}: read or change them</summary><div class="caps">${m.platforms.filter((p) => m.captions[p]).map((p) => { const c = m.captions[p], lim = mk.s.limits.captions[p] || 2200, n = capCount(p, c); return `<div class="cap" data-cap="${esc(m.id)}|${esc(p)}"><div class="row">${badge(p, true)}<b>${esc(labelOf(p))}</b><span class="count ${n > lim ? 'over' : ''}">${n} / ${lim}</span></div>${p === 'youtube' ? '<span class="small muted">The first line is the video\'s title.</span>' : ''}<textarea class="inp" rows="3" aria-label="${esc(labelOf(p))} caption" maxlength="${lim}">${esc(c.caption)}</textarea><input class="inp" aria-label="${esc(labelOf(p))} hashtags" value="${esc(c.hashtags.join(' '))}" placeholder="#hashtags"></div>`; }).join('')}</div></details>` : '';
+    const acts = m.status === 'ready' || m.status === 'failed' && m.video
+      ? `<div class="row"><button class="btn" data-mk-preview="${esc(m.id)}">Preview</button><button class="btn primary" data-mk-post="${esc(m.id)}">Post now</button><button class="btn quiet" data-mk-discard="${esc(m.id)}">Throw away</button></div>`
+      : m.status === 'posted' || m.status === 'failed' ? `<div class="row"><button class="btn quiet" data-mk-discard="${esc(m.id)}">Remove from this list</button></div>` : '';
+    return `<article class="card made" aria-busy="${['writing', 'rendering', 'posting'].includes(m.status)}">${media}<div class="body">
+      <div class="row"><span class="pill ${cls}">${esc(word)}</span>${m.auto ? '<span class="pill">Made by itself</span>' : ''}${m.seconds ? `<span class="small muted">${m.seconds} seconds</span>` : ''}</div>
+      <h2>${esc(m.idea.title)}</h2>
+      ${m.problem ? `<div class="notice ${m.status === 'failed' ? 'bad' : ''}"><div>${esc(m.problem)}</div></div>` : ''}
+      ${s ? `<div class="script"><b>${esc(s.hook)}</b><ul>${s.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul><span class="muted">Ends with: ${esc(s.cta)}</span></div>` : ''}
+      ${caps}${acts}</div></article>`;
+  }
+
+  function renderMade() {
+    const list = mk.s.made;
+    $('#mk-made-sub').textContent = list.length ? 'Watch each one, change the captions if you like, then post it or throw it away.' : 'Nothing made yet. Pick an idea above.';
+    $('#mk-made').innerHTML = list.map(madeHtml).join('');
+    const ready = list.filter((m) => m.status === 'ready').length;
+    $('#nav-made').hidden = !ready; $('#nav-made').textContent = ready;
+  }
+
+  function renderAuto() {
+    const a = mk.s.auto;
+    $('#mk-auto').checked = a.on; $('#mk-auto').disabled = !a.unlocked && !a.on;
+    $('#mk-auto-word').textContent = a.on ? 'On' : 'Off';
+    $('#mk-perweek').value = String([1, 2, 3, 5, 7].includes(a.perWeek) ? a.perWeek : 3);
+    $('#mk-auto-chips').innerHTML = chipsHtml('mka', new Set(a.platforms));
+    $('#mk-auto-sub').textContent = a.on ? `On. The app makes and posts ${plural(a.perWeek, 'video')} a week by itself, at most ${a.dailyCap} a day, while it's open on this set of accounts. Each one shows up below.` : 'Off. Every post waits for you. When it\'s on, the app makes a post from your next idea and posts it without asking.';
+    const hours = a.unlocksAt ? Math.max(1, Math.ceil((new Date(a.unlocksAt) - Date.now()) / 3600000)) : 0;
+    $('#mk-auto-lock').hidden = a.unlocked;
+    $('#mk-auto-lock').textContent = a.unlocksAt ? `Locked for the first 24 hours after you connect your accounts, so you see what the maker makes first. Available in about ${plural(hours, 'hour')}.` : 'Locked until you connect an account in this set, and for 24 hours after that.';
+  }
+
+  function renderMaker() { if (!mk.s) return; renderAi(); renderBrief(); renderIdeas(); renderMade(); renderAuto(); }
+
+  $('#v-make').addEventListener('submit', async (e) => {
+    if (e.target.id === 'mk-key') {
+      e.preventDefault(); $('#mk-key-err').hidden = true;
+      try { const r = await post('/api/maker/ai', { apiKey: $('#mk-key-in').value, mode: 'byo' }); mk.s.ai = r.ai; mk.s.usage = r.usage; renderMaker(); toast('Key saved on this Mac.'); }
+      catch (err) { $('#mk-key-err').textContent = err.message; $('#mk-key-err').hidden = false; }
+    }
+    if (e.target.id === 'mk-brief') {
+      e.preventDefault(); $('#mk-brief-err').hidden = true;
+      try {
+        const r = await post('/api/maker/brief', { business: $('#mk-business').value, audience: $('#mk-audience').value, whatYouDo: $('#mk-what').value, facts: lines($('#mk-facts').value), avoid: lines($('#mk-avoid').value), cta: $('#mk-cta').value, color: $('#mk-color').value, mood: $('input[name="mood"]:checked').value });
+        mk.s.brief = r.brief; mk.s.problem = r.problem; $('#mk-brief').dataset.open = ''; delete $('#mk-brief').dataset.filled; renderMaker(); toast('Saved.');
+      } catch (err) { $('#mk-brief-err').textContent = err.message; $('#mk-brief-err').hidden = false; }
+    }
+  });
+  $('#mk-brief-edit').addEventListener('click', () => { $('#mk-brief').dataset.open = '1'; renderBrief(); $('#mk-business').focus(); });
+
+  async function uploadPhotos(files, logo) {
+    for (const f of files) {
+      try {
+        const r = await api(`/api/maker/photo${logo ? '?logo=1' : ''}`, { method: 'POST', headers: { 'content-type': f.type || 'application/octet-stream' }, body: f });
+        mk.s.photos = r.photos; mk.s.logo = r.logo; mk.s.problem = r.problem; renderBrief(); renderIdeas();
+      } catch (e) { toast(`${f.name}: ${e.message}`); }
+    }
+  }
+  $('#mk-pick').addEventListener('change', (e) => { uploadPhotos([...e.target.files], false); e.target.value = ''; });
+  $('#mk-pick-logo').addEventListener('change', (e) => { uploadPhotos([...e.target.files], true); e.target.value = ''; });
+
+  $('#v-make').addEventListener('click', async (e) => {
+    const t = e.target;
+    if (t.closest('#mk-add')) return $('#mk-pick').click();
+    if (t.closest('#mk-add-logo')) return $('#mk-pick-logo').click();
+    const rm = t.closest('[data-rm]');
+    if (rm) { try { const r = await post('/api/maker/photo/remove', { name: rm.dataset.rm }); mk.s.photos = r.photos; mk.s.logo = r.logo; mk.s.problem = r.problem; renderBrief(); renderIdeas(); } catch (err) { toast(err.message); } return; }
+    if (t.closest('#mk-suggest')) {
+      const b = $('#mk-suggest'); b.disabled = true; b.textContent = 'Thinking of ideas…';
+      try { const r = await post('/api/maker/ideas'); mk.s.ideas = r.ideas; renderIdeas(); } catch (err) { toast(err.message); }
+      b.textContent = 'Suggest ideas'; renderIdeas(); return;
+    }
+    const mkb = t.closest('[data-make]');
+    if (mkb) {
+      const idea = mk.s.ideas[Number(mkb.dataset.make)];
+      const platforms = $$('input[name="mkp"]:checked').map((i) => i.value);
+      if (!platforms.length) return toast('Choose at least one account to write captions for.');
+      mkb.disabled = true;
+      try { await post('/api/maker/make', { idea, platforms }); toast('Making it now. It takes about a minute.'); await loadMaker(); $('#mk-made').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) { toast(err.message); mkb.disabled = false; }
+      return;
+    }
+    const pv = t.closest('[data-mk-preview]'), pn = t.closest('[data-mk-post]'), dc = t.closest('[data-mk-discard]');
+    if (pv || pn) {
+      const m = mk.s.made.find((x) => x.id === (pv || pn).dataset[pv ? 'mkPreview' : 'mkPost']);
+      if (!m) return;
+      const ids = m.platforms.filter((p) => m.captions[p] && (connected().includes(p)));
+      if (!ids.length) return toast('None of the accounts this was written for are connected. Connect them in Accounts.');
+      if (pv) return postMade(m, ids, false);
+      mk.pending = { m, ids };
+      $('#mk-cf-title').textContent = 'Post this video for real?';
+      $('#mk-cf-text').textContent = `It goes out from your “${setName()}” accounts, each with its own caption.`;
+      $('#mk-cf-list').innerHTML = ids.map((id) => `<li>${esc(labelOf(id))}</li>`).join('');
+      return $('#mk-confirm').showModal();
+    }
+    if (dc) { try { await post(`/api/maker/made/${dc.dataset.mkDiscard}/discard`); await loadMaker(); toast('Thrown away. That idea won\'t be suggested again.'); } catch (err) { toast(err.message); } }
+  });
+  async function postMade(m, ids, live) {
+    try { const r = await post(`/api/maker/made/${m.id}/post`, { platforms: ids, live }); state.batchId = r.batchId; state.batch = null; go('progress'); pollBatch(); }
+    catch (err) { toast(err.message); }
+  }
+  $('#mk-cf-no').addEventListener('click', () => { $('#mk-confirm').close(); mk.pending = null; });
+  $('#mk-cf-yes').addEventListener('click', () => { $('#mk-confirm').close(); const p = mk.pending; mk.pending = null; if (p) postMade(p.m, p.ids, true); });
+
+  // Captions save when the person leaves the box.
+  $('#v-make').addEventListener('input', (e) => {
+    const cap = e.target.closest('[data-cap]'); if (!cap) return;
+    const [, p] = cap.dataset.cap.split('|');
+    const c = { caption: cap.querySelector('textarea').value, hashtags: cap.querySelector('input').value.split(/\s+/).filter(Boolean).map((h) => (h.startsWith('#') ? h : '#' + h)) };
+    const lim = mk.s.limits.captions[p] || 2200, n = capCount(p, c), el = cap.querySelector('.count');
+    el.textContent = `${n} / ${lim}`; el.classList.toggle('over', n > lim);
+  });
+  $('#v-make').addEventListener('focusout', async (e) => {
+    const cap = e.target.closest('[data-cap]'); if (!cap || cap.contains(e.relatedTarget)) return;
+    const [id, p] = cap.dataset.cap.split('|');
+    const c = { caption: cap.querySelector('textarea').value, hashtags: cap.querySelector('input').value.split(/\s+/).filter(Boolean) };
+    try { const r = await post(`/api/maker/made/${id}/captions`, { captions: { [p]: c } }); const i = mk.s.made.findIndex((x) => x.id === id); if (i >= 0) mk.s.made[i].captions = r.captions; } catch (err) { toast(err.message); }
+  });
+  $('#v-make').addEventListener('change', async (e) => {
+    if (e.target.name === 'mkp') { mk.picked = new Set($$('input[name="mkp"]:checked').map((i) => i.value)); return; }
+    if (e.target.id === 'mk-auto' || e.target.id === 'mk-perweek' || e.target.name === 'mka') {
+      const want = { on: $('#mk-auto').checked, perWeek: Number($('#mk-perweek').value), platforms: $$('input[name="mka"]:checked').map((i) => i.value) };
+      try { const r = await post('/api/maker/auto', want); mk.s.auto = r.auto; if (e.target.id === 'mk-auto') toast(r.auto.on ? 'The app will now make and post by itself.' : 'Off. Every post waits for you again.'); }
+      catch (err) { toast(err.message); }
+      renderAuto();
+    }
+  });
 
   /* ---------------- start ---------------- */
   (async () => {
@@ -725,7 +1022,7 @@
     renderSets(); renderStatus(); renderClips();
     try { const cur = await api('/api/batches/current'); if (cur) { state.batchId = cur.id; state.batch = cur; renderProgress(); if (!cur.done) pollBatch(); } } catch {}
     if (!state.app.settings.onboarded) { $('#onboard').hidden = false; $('#shell').inert = true; onboardStep(1); go('post'); }
-    else { const want = location.hash.slice(1); go(['post', 'progress', 'history', 'accounts'].includes(want) ? want : state.batch && !state.batch.done ? 'progress' : 'post'); }
+    else { const want = location.hash.slice(1); go(['post', 'make', 'progress', 'history', 'accounts'].includes(want) ? want : state.batch && !state.batch.done ? 'progress' : 'post'); }
   })();
 })();
 </script>

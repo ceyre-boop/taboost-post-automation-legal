@@ -169,7 +169,7 @@ export interface Fix {
   /** What the person should do about it. */
   fix: string;
   /** "connect" sends them to Accounts; "retry" offers Try again. */
-  action: "connect" | "retry" | "add-clip" | "chrome";
+  action: "connect" | "retry" | "add-clip" | "chrome" | "check";
 }
 
 /** Turn an engine error into something a non-technical person can act on. The raw
@@ -203,6 +203,9 @@ export function explain(note: string, platformLabel: string): Fix {
   }
   if (/Timeout|exceeded|waiting for|locator|not visible|never (appeared|enabled|answered)|did not (appear|enable)/i.test(n)) {
     return { problem: `${P} took too long, or its page wasn't where the app expected.`, fix: `Look at the ${P} tab in the app's Chrome window. Close any pop-up or notice it's showing, then press Try again.`, action: "retry" };
+  }
+  if (/^UNCONFIRMED|may have gone out/i.test(n)) {
+    return { problem: `The app pressed Post on ${P} but couldn't see the post go up.`, fix: `It has probably gone out. Open ${P} and check your posts before posting this clip there again.`, action: "check" };
   }
   if (/POSTED BUT NOT DELETED/i.test(n)) {
     return { problem: `The test post went up on ${P} but couldn't be taken down.`, fix: `Open ${P} and delete the post yourself.`, action: "retry" };

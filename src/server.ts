@@ -209,7 +209,7 @@ function batchView(entry: BatchRun) {
     log: entry.log,
     items: b.items.map((i) => {
       const label = PLATFORMS[i.platform]?.label ?? i.platform;
-      const problem = i.status === "error" || /NOT DELETED/.test(i.note ?? "");
+      const problem = i.status === "error" || i.status === "unconfirmed" || /NOT DELETED/.test(i.note ?? "");
       return { ...i, name: displayName(i.video), label, postsUrl: APP_PLATFORMS[i.platform]?.postsUrl ?? "", fix: problem ? explain(i.note ?? "", label) : null };
     }),
   };
@@ -509,8 +509,9 @@ const server = createServer(async (req, res) => {
       return json(res, 200, rows.map((r: any) => {
         const label = PLATFORMS[r.platform]?.label ?? r.platform;
         const failed = String(r.status).startsWith("error");
-        const kind = r.status === "posted" ? "posted" : r.status === "dry-run" ? "preview" : r.status === "deleted" ? "deleted" : failed ? "failed" : "other";
-        return { ...r, name: displayName(r.video), label, kind, link: APP_PLATFORMS[r.platform]?.postsUrl ?? "", fix: failed ? explain(String(r.status).replace(/^error:\s*/, ""), label) : null };
+        const unsure = String(r.status).startsWith("unconfirmed");
+        const kind = r.status === "posted" ? "posted" : r.status === "dry-run" ? "preview" : r.status === "deleted" ? "deleted" : failed ? "failed" : unsure ? "check" : "other";
+        return { ...r, name: displayName(r.video), label, kind, link: APP_PLATFORMS[r.platform]?.postsUrl ?? "", fix: failed ? explain(String(r.status).replace(/^error:\s*/, ""), label) : unsure ? explain("UNCONFIRMED", label) : null };
       }));
     }
     json(res, 404, { error: "not found" });
