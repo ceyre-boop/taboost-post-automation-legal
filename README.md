@@ -27,6 +27,13 @@ The **Make** screen makes posts as well as posting them:
 4. **Review:** the video plays in the page, every caption can be changed (each checked against its platform's limit), then Preview or Post now through the normal batch engine.
 5. **Make and post by itself:** N posts a week, at most 2 a day. It can't be switched on in the first 24 hours after a set's accounts are first connected, and it's off until switched on.
 
+### Second round (2026-11-22, branch `video-maker`)
+
+- **Six looks** (`src/maker/formats.ts`), each with its own layout in `dashboard/render.html` and its own rules in `checks.ts`: Quick tips, 1-2-3 steps, Myth vs fact (the myth is struck through), Problem and fix, A question people ask (a speech bubble), and One number (counted up, only for a fact with a number). Ideas come in as many different looks and facts as possible.
+- **Your clips** (`src/maker/clips.ts`): add an MP4 or MOV (up to 1 GB, written to disk as it arrives; length, size, sound and codec are read from the file; ProRes is refused with how to export). Say what it shows, pick at most 56 seconds of it, and **Finish this clip**: it's fitted to an upright screen (over a blurred copy of itself when it's wide), with the title, captions in turn, the clip's own sound under the music, and the end card. Clips are also mixed in behind the photo looks.
+- **This week** (`src/maker/plan.ts`): **Plan my week** picks 3 to 5 posts (unused clips first, then varied looks) on spread-out days at midday and evening, makes them one at a time, and waits. Nothing posts until it's approved; an approved post goes out at its time while the app is open, and one more than 6 hours late waits for the person again. "Plan a new week by itself" re-plans when the week ends, and each post still needs approval.
+- Voice is not built yet (decided 2026-11-22: later, with a paid voice service or Colin's own recording).
+
 Checks before anything is shown (`src/maker/checks.ts`): every number must come from the person's facts, never-say words and unbacked claims (guaranteed, #1, licensed, cheapest…) are refused, on-screen text must fit, and every chosen account needs a caption within its limit. A script that fails goes back to the AI once with the problems; a second failure makes nothing and says why.
 
 The AI follows `HOSTING.md`: Northbound hosting by default, or the person's own API key; never the Max plan. Every request is logged with its estimated cost in `usage.jsonl`.

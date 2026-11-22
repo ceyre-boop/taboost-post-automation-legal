@@ -12,6 +12,9 @@ import type { Idea } from "./write.ts";
 
 export type MadeStatus = "writing" | "rendering" | "ready" | "posting" | "posted" | "failed" | "discarded";
 
+/** The back of one card: a photo, or a clip starting `from` seconds in. */
+export interface Media { type: "photo" | "clip"; name: string; from?: number; }
+
 export interface MadePost {
   id: string;
   set: string;
@@ -23,8 +26,10 @@ export interface MadePost {
   /** Captions as the person last edited them (starts as the script's). */
   captions?: Record<string, PlatformCaption>;
   seconds?: number;
-  /** Photos used, in card order. */
+  /** Photos used, in card order (older posts; newer ones also have `media`). */
   photos?: string[];
+  /** What fills each card, in order: photos and stretches of clips. */
+  media?: Media[];
   problem?: string;
   batchId?: string;
   postedAt?: string;

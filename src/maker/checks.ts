@@ -7,13 +7,18 @@
 //   - a caption for every chosen platform, inside that platform's limit
 import { normNum, numbersIn } from "../pipeline/facts.ts";
 import type { ClientBrief } from "./brief.ts";
+import { FORMATS, type Format } from "./formats.ts";
 
 export interface Card { text: string; }
 export interface PlatformCaption { caption: string; hashtags: string[]; }
 export interface MadeScript {
+  /** Which layout and rules (formats.ts). Older posts have none: they are "tips". */
+  format?: Format;
   hook: string;
   points: string[];
   cta: string;
+  /** "One number" posts: the number shown huge, exactly as a fact writes it. */
+  stat?: string;
   platforms: Record<string, PlatformCaption>;
 }
 
@@ -35,13 +40,15 @@ export function fullCaption(c: PlatformCaption): string {
 const UNBACKED = [/\bguarantee[ds]?\b/i, /#1\b|\bnumber one\b/i, /\bbest in (town|the|[a-z]+)\b/i, /\bcheapest\b/i, /\blowest price/i, /\bfree\b(?!\s+to\b)/i, /\baward[- ]winning\b/i, /\blicensed\b/i, /\binsured\b/i, /\bcertified\b/i];
 
 export function scriptTexts(s: MadeScript): string[] {
-  return [s.hook, ...s.points, s.cta, ...Object.values(s.platforms ?? {}).flatMap((p) => [p.caption, ...(p.hashtags ?? [])])];
+  return [s.hook, ...s.points, s.cta, s.stat ?? "", ...Object.values(s.platforms ?? {}).flatMap((p) => [p.caption, ...(p.hashtags ?? [])])];
 }
 
-export function scriptProblems(s: MadeScript, brief: ClientBrief, platforms: string[]): string[] {
+/** `extra` is anything else the person wrote that a post may draw on (what their clip shows). */
+export function scriptProblems(s: MadeScript, brief: ClientBrief, platforms: string[], extra = ""): string[] {
   const out: string[] = [];
-  const texts = scriptTexts(s).filter((t) => typeof t === "string");
-  const sources = [...brief.facts, brief.business, brief.cta].join("\n");
+  const texts = scriptTexts(s).filter((t) => typeof t === "string" && t);
+  const sources = [...brief.facts, brief.business, brief.cta, extra].join("\n");
+  const spec = FORMATS[s.format ?? "tips"] ?? FORMATS.tips;
 
   const allowed = new Set(numbersIn(sources).map(normNum));
   for (const t of texts) for (const n of numbersIn(t)) {
@@ -56,10 +63,17 @@ export function scriptProblems(s: MadeScript, brief: ClientBrief, platforms: str
   if (/\[[^\]]{1,40}\]|\{\{[^}]+\}\}|\bas an ai\b|\bai[- ]generated\b/i.test(texts.join("\n"))) out.push("It has a blank like [Name] or mentions AI. Write only finished words.");
 
   if (!s.hook?.trim()) out.push("The hook is empty.");
-  else if (words(s.hook) > LIMITS.hookWords) out.push(`The hook is ${words(s.hook)} words; at most ${LIMITS.hookWords}, so it reads in 2 seconds.`);
+  else if (words(s.hook) > spec.hookWords) out.push(`The hook is ${words(s.hook)} words; at most ${spec.hookWords}, so it reads in 2 seconds.`);
+  if (spec.id === "question" && s.hook?.trim() && !s.hook.trim().endsWith("?")) out.push("The hook is the question, so it must end with a question mark.");
   const pts = Array.isArray(s.points) ? s.points.filter((p) => typeof p === "string" && p.trim()) : [];
-  if (pts.length < LIMITS.points.min || pts.length > LIMITS.points.max) out.push(`Give ${LIMITS.points.min} to ${LIMITS.points.max} points; there are ${pts.length}.`);
-  for (const p of pts) if (words(p) > LIMITS.pointWords) out.push(`The point "${p}" is ${words(p)} words; at most ${LIMITS.pointWords} so it fits on screen.`);
+  const want = spec.points.min === spec.points.max ? `exactly ${spec.points.min}` : `${spec.points.min} to ${spec.points.max}`;
+  if (pts.length < spec.points.min || pts.length > spec.points.max) out.push(`Give ${want} points for a "${spec.label}" post; there are ${pts.length}.`);
+  for (const p of pts) if (words(p) > spec.pointWords) out.push(`The point "${p}" is ${words(p)} words; at most ${spec.pointWords} so it fits on screen.`);
+  if (spec.id === "number") {
+    const stat = (s.stat ?? "").trim();
+    if (!stat) out.push('A "One number" post needs the number in "stat".');
+    else if (stat.length > 12 || !numbersIn(stat).length) out.push(`"${stat}" isn't a short number. Put just the number from the fact in "stat", for example 412 or 15%.`);
+  }
   if (!s.cta?.trim()) out.push("The call to action is empty.");
   else if (words(s.cta) > LIMITS.ctaWords) out.push(`The call to action is ${words(s.cta)} words; at most ${LIMITS.ctaWords}.`);
 
@@ -86,4 +100,11 @@ export function cardSeconds(text: string, kind: "hook" | "point" | "end"): numbe
 
 export function videoSeconds(s: MadeScript): number {
   return cardSeconds(s.hook, "hook") + s.points.reduce((n, p) => n + cardSeconds(p, "point"), 0) + cardSeconds(s.cta, "end");
+}
+
+/** The hook card's time on screen, by format: a question or a big number needs a little longer. */
+export function hookSeconds(s: MadeScript): number {
+  if (s.format === "question") return Math.min(4.2, 2.4 + words(s.hook) / 5);
+  if (s.format === "number") return 3.4;
+  return cardSeconds(s.hook, "hook");
 }

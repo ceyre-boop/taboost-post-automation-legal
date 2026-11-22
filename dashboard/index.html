@@ -235,6 +235,23 @@
   .script b { display: block; font-size: 15.5px; margin-bottom: 4px; }
   .script li { margin: 2px 0; }
   .script ul { margin: 4px 0 6px; padding-left: 18px; }
+  .plan { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+  .plan li { display: grid; grid-template-columns: 112px 1fr auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .plan .when { font-weight: 700; font-size: 14px; }
+  .plan .when span { display: block; font-weight: 500; color: var(--ink-3); font-size: 12.5px; }
+  .plan .what { min-width: 0; display: grid; gap: 4px; }
+  .plan .what b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plan .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .fmt { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 650; background: var(--accent-soft); color: var(--accent-strong); white-space: nowrap; }
+  .clips { display: grid; gap: 12px; margin-top: 12px; }
+  .clip { display: grid; grid-template-columns: 150px 1fr; gap: 16px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .clip video { width: 150px; max-height: 220px; border-radius: 10px; background: #000; display: block; object-fit: contain; }
+  .clip .body { min-width: 0; display: grid; gap: 10px; align-content: start; }
+  .clip .trim { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13.5px; color: var(--ink-2); }
+  .clip .trim input { width: 84px; }
+  .drop { margin-top: 12px; padding: 18px; border: 2px dashed var(--line-strong); border-radius: 12px; text-align: center; color: var(--ink-2); cursor: pointer; background: transparent; width: 100%; font: inherit; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+  @media (max-width: 640px) { .plan li { grid-template-columns: 1fr; } .plan .acts { justify-content: flex-start; } .clip { grid-template-columns: 1fr; } .clip video { width: 100%; } }
   .capbox summary { cursor: pointer; font-weight: 600; color: var(--accent-strong); padding: 6px 0; }
   .capbox[open] summary { margin-bottom: 8px; }
   .caps { display: grid; gap: 10px; }
@@ -354,6 +371,19 @@
       <div class="head"><div><h1>Make a post</h1><p class="muted">The app writes a short video from your photos and facts, with a caption for each account. You watch it and choose before anything goes out.</p></div></div>
       <div id="mk-ai"></div>
 
+      <div class="card pad" id="mk-plan-card" style="margin-bottom:14px">
+        <div class="row" style="justify-content:space-between;align-items:start;gap:12px">
+          <div><h2>This week</h2><p class="muted small" id="mk-plan-sub" style="margin-top:4px">The app picks what to post this week, makes each one, and waits for you. Nothing goes out until you approve it.</p></div>
+          <button class="btn primary" id="mk-plan-make">Plan my week</button>
+        </div>
+        <div class="row" style="margin-top:12px;gap:18px;flex-wrap:wrap">
+          <span class="row" style="gap:8px"><label class="small" for="mk-plan-n" style="font-weight:600;color:var(--ink-2)">Posts a week</label><select class="inp" id="mk-plan-n" style="width:auto"><option>3</option><option selected>4</option><option>5</option></select></span>
+          <label class="switch"><input type="checkbox" id="mk-plan-every"><i></i><span class="small">Plan a new week by itself when this one ends</span></label>
+        </div>
+        <div class="section" style="margin-top:10px"><span class="small" style="font-weight:600;color:var(--ink-2)">Post to</span><div class="chips" id="mk-plan-chips" style="margin-top:6px"></div></div>
+        <ol class="plan" id="mk-plan-slots"></ol>
+      </div>
+
       <div class="card pad" id="mk-brief-card">
         <div class="row" style="justify-content:space-between"><h2>Your business</h2><button class="btn sm" id="mk-brief-edit" hidden>Edit</button></div>
         <p class="muted small" id="mk-brief-sum" style="margin-top:4px">Tell the app about your business once. Every post is built from this, and only the facts you give here can appear in one.</p>
@@ -384,9 +414,18 @@
         </div>
       </div>
 
+      <div class="card pad" style="margin-top:14px" id="mk-clips-card">
+        <h2>Your clips</h2>
+        <p class="muted small" style="margin-top:4px">Got a video that's almost done? Add it and the app finishes it: fits it to an upright phone screen, adds a title, captions and music, ends on your logo, and writes each account's caption. Clips are also mixed in behind the other posts, and the week's plan uses them first.</p>
+        <div class="section" style="margin-top:12px"><span class="small" style="font-weight:600;color:var(--ink-2)">Write captions for</span><div class="chips" id="mk-chips-clips" style="margin-top:6px"></div></div>
+        <div class="clips" id="mk-clips"></div>
+        <button type="button" class="drop" id="mk-add-clip">+ Add a clip (MP4 or MOV, up to 1 GB). Or drop it here.</button>
+        <input type="file" id="mk-pick-clip" accept="video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v" multiple hidden>
+      </div>
+
       <div class="card pad" style="margin-top:14px">
         <div class="row" style="justify-content:space-between"><h2>Ideas</h2><button class="btn primary" id="mk-suggest">Suggest ideas</button></div>
-        <p class="muted small" style="margin-top:4px">Each idea is built on one of your facts, and none repeats a post you've already made.</p>
+        <p class="muted small" style="margin-top:4px">Each idea is built on one of your facts, comes in one of six looks, and doesn't repeat a post you've already made.</p>
         <div class="section" style="margin-top:12px"><span class="small" style="font-weight:600;color:var(--ink-2)">Write captions for</span><div class="chips" id="mk-chips" style="margin-top:6px"></div></div>
         <div class="ideas" id="mk-ideas"></div>
       </div>
@@ -843,6 +882,8 @@
 
   /* ---------------- make ---------------- */
   const mk = { s: null, picked: null, timer: 0, saving: new Set() };
+  const FMT = { tips: 'Quick tips', steps: '1-2-3 steps', mythfact: 'Myth vs fact', problemfix: 'Problem and fix', question: 'A question people ask', number: 'One number', clip: 'Your clip' };
+  const SLOT = { waiting: ['Waiting to be made', 'info'], making: ['Being made', 'info busy'], ready: ['Ready: watch it, then approve', 'warn'], approved: ['Approved', 'ok'], posting: ['Posting', 'info busy'], posted: ['Posted', 'ok'], failed: ["Didn't work", 'bad'], tossed: ['Thrown away', ''], missed: ['Missed its time', 'warn'] };
   const STATUS = { writing: ['Writing the script', 'info busy'], rendering: ['Making the video', 'info busy'], ready: ['Ready for you', 'ok'], posting: ['Posting', 'info busy'], posted: ['Posted', 'ok'], failed: ["Didn't work", 'bad'] };
   const money = (n) => (n > 0 && n < 0.01 ? 'under 1 cent' : '$' + n.toFixed(2));
   const labelOf = (id) => (state.app.platforms.find((p) => p.id === id)?.label || id).replace(/\s*\(.*\)$/, '');
@@ -852,8 +893,12 @@
     try { mk.s = await api('/api/maker'); } catch (e) { toast(e.message); return; }
     renderMaker();
     clearTimeout(mk.timer);
-    if (mk.s.made.some((m) => ['writing', 'rendering', 'posting'].includes(m.status))) mk.timer = setTimeout(() => { if (!$('#v-make').hidden) loadMaker(); }, 2000);
+    const busy = mk.s.made.some((m) => ['writing', 'rendering', 'posting'].includes(m.status));
+    const queued = mk.s.plan.platforms.length && mk.s.plan.slots.some((x) => x.state === 'waiting');
+    if (busy || queued) mk.timer = setTimeout(() => { if (!$('#v-make').hidden) loadMaker(); }, busy ? 2000 : 5000);
   }
+  const when = (iso) => { const d = new Date(iso); return { day: d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }), time: d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }; };
+  const secs = (n) => (Math.round(n * 10) / 10).toString();
 
   function renderAi() {
     const ai = mk.s.ai, u = mk.s.usage;
@@ -898,10 +943,11 @@
   function renderIdeas() {
     if (!mk.picked) mk.picked = new Set(connected().length ? connected() : state.app.platforms.map((p) => p.id));
     $('#mk-chips').innerHTML = chipsHtml('mkp', mk.picked);
+    $('#mk-chips-clips').innerHTML = chipsHtml('mkp', mk.picked);
     const blocked = mk.s.problem || !mk.s.ai.ready;
     $('#mk-suggest').disabled = !!blocked;
     $('#mk-suggest').title = mk.s.problem || (mk.s.ai.ready ? '' : 'Add an API key first');
-    $('#mk-ideas').innerHTML = mk.s.problem ? `<p class="muted small">${esc(mk.s.problem)}</p>` : mk.s.ideas.map((i, n) => `<div class="card idea"><div class="t"><b>${esc(i.title)}</b><span class="muted small">${esc(i.angle)}</span></div><button class="btn sm primary" data-make="${n}" ${mk.s.making || blocked ? 'disabled' : ''}>Make this</button></div>`).join('');
+    $('#mk-ideas').innerHTML = mk.s.problem ? `<p class="muted small">${esc(mk.s.problem)}</p>` : mk.s.ideas.map((i, n) => `<div class="card idea"><div class="t"><span class="fmt">${esc(FMT[i.format] || FMT.tips)}</span><b style="margin-top:4px">${esc(i.title)}</b><span class="muted small">${esc(i.angle)}</span></div><button class="btn sm primary" data-make="${n}" ${mk.s.making || blocked ? 'disabled' : ''}>Make this</button></div>`).join('');
   }
 
   function capCount(id, c) { const full = (c.caption + (c.hashtags.length ? '\n\n' + c.hashtags.join(' ') : '')); return [...full].length; }
@@ -912,14 +958,17 @@
     const s = m.script;
     const caps = (m.status === 'ready' || m.status === 'posted' || m.status === 'failed') && Object.keys(m.captions).length
       ? `<details class="capbox"><summary>Captions for ${plural(m.platforms.filter((p) => m.captions[p]).length, 'account')}: read or change them</summary><div class="caps">${m.platforms.filter((p) => m.captions[p]).map((p) => { const c = m.captions[p], lim = mk.s.limits.captions[p] || 2200, n = capCount(p, c); return `<div class="cap" data-cap="${esc(m.id)}|${esc(p)}"><div class="row">${badge(p, true)}<b>${esc(labelOf(p))}</b><span class="count ${n > lim ? 'over' : ''}">${n} / ${lim}</span></div>${p === 'youtube' ? '<span class="small muted">The first line is the video\'s title.</span>' : ''}<textarea class="inp" rows="3" aria-label="${esc(labelOf(p))} caption" maxlength="${lim}">${esc(c.caption)}</textarea><input class="inp" aria-label="${esc(labelOf(p))} hashtags" value="${esc(c.hashtags.join(' '))}" placeholder="#hashtags"></div>`; }).join('')}</div></details>` : '';
+    const planned = m.planAt && m.status === 'ready'
+      ? (m.approved ? `<button class="btn" data-plan-approve="${esc(m.id)}" data-v="0">Undo approval</button>` : `<button class="btn primary" data-plan-approve="${esc(m.id)}" data-v="1">Approve for ${esc(when(m.planAt).day)}</button>`) : '';
     const acts = m.status === 'ready' || m.status === 'failed' && m.video
-      ? `<div class="row"><button class="btn" data-mk-preview="${esc(m.id)}">Preview</button><button class="btn primary" data-mk-post="${esc(m.id)}">Post now</button><button class="btn quiet" data-mk-discard="${esc(m.id)}">Throw away</button></div>`
+      ? `<div class="row">${planned}<button class="btn" data-mk-preview="${esc(m.id)}">Preview</button><button class="btn ${planned ? '' : 'primary'}" data-mk-post="${esc(m.id)}">Post now</button><button class="btn quiet" data-mk-discard="${esc(m.id)}">Throw away</button></div>`
       : m.status === 'posted' || m.status === 'failed' ? `<div class="row"><button class="btn quiet" data-mk-discard="${esc(m.id)}">Remove from this list</button></div>` : '';
-    return `<article class="card made" aria-busy="${['writing', 'rendering', 'posting'].includes(m.status)}">${media}<div class="body">
-      <div class="row"><span class="pill ${cls}">${esc(word)}</span>${m.auto ? '<span class="pill">Made by itself</span>' : ''}${m.seconds ? `<span class="small muted">${m.seconds} seconds</span>` : ''}</div>
+    const planLine = m.planAt ? `<span class="small muted">${m.approved ? 'Approved. Posts' : 'Planned for'} ${esc(when(m.planAt).day)}, ${esc(when(m.planAt).time)}</span>` : '';
+    return `<article class="card made" id="made-${esc(m.id)}" aria-busy="${['writing', 'rendering', 'posting'].includes(m.status)}">${media}<div class="body">
+      <div class="row"><span class="pill ${cls}">${esc(word)}</span><span class="fmt">${esc(m.formatLabel || FMT[m.format] || '')}</span>${m.auto ? '<span class="pill">Made by itself</span>' : ''}${m.seconds ? `<span class="small muted">${m.seconds} seconds</span>` : ''}${planLine}</div>
       <h2>${esc(m.idea.title)}</h2>
       ${m.problem ? `<div class="notice ${m.status === 'failed' ? 'bad' : ''}"><div>${esc(m.problem)}</div></div>` : ''}
-      ${s ? `<div class="script"><b>${esc(s.hook)}</b><ul>${s.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul><span class="muted">Ends with: ${esc(s.cta)}</span></div>` : ''}
+      ${s ? `<div class="script">${s.stat ? `<b style="font-size:22px">${esc(s.stat)}</b>` : ''}<b>${esc(s.hook)}</b><ul>${s.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul><span class="muted">Ends with: ${esc(s.cta)}</span></div>` : ''}
       ${caps}${acts}</div></article>`;
   }
 
@@ -943,7 +992,46 @@
     $('#mk-auto-lock').textContent = a.unlocksAt ? `Locked for the first 24 hours after you connect your accounts, so you see what the maker makes first. Available in about ${plural(hours, 'hour')}.` : 'Locked until you connect an account in this set, and for 24 hours after that.';
   }
 
-  function renderMaker() { if (!mk.s) return; renderAi(); renderBrief(); renderIdeas(); renderMade(); renderAuto(); }
+  function renderPlan() {
+    const p = mk.s.plan;
+    if (!mk.planPicked) mk.planPicked = new Set(p.platforms.length ? p.platforms : connected());
+    $('#mk-plan-chips').innerHTML = chipsHtml('mkplan', mk.planPicked);
+    $('#mk-plan-n').value = String(p.perWeek);
+    $('#mk-plan-every').checked = p.every;
+    const blocked = !mk.s.brief ? 'Fill in your business details below first.' : !mk.s.ai.ready ? 'Add an API key first.' : (mk.s.problem && !mk.s.clips.some((c) => c.note.trim().length >= 3)) ? mk.s.problem : '';
+    $('#mk-plan-make').disabled = !!blocked || !!mk.planning;
+    $('#mk-plan-make').textContent = mk.planning ? 'Planning…' : p.slots.length && !p.over ? 'Plan again' : 'Plan my week';
+    $('#mk-plan-sub').textContent = blocked || (p.slots.length
+      ? `${plural(p.slots.filter((x) => x.state === 'approved' || x.state === 'posted').length, 'post')} approved of ${p.slots.length}. Watch each one in Made for you, then approve it to post at its time while the app is open. ${p.every ? 'A new week is planned when this one ends.' : ''}`
+      : 'The app picks what to post this week, in a mix of looks, makes each one, and waits for you. Nothing goes out until you approve it.');
+    $('#mk-plan-slots').innerHTML = p.slots.map((x) => {
+      const [word, cls] = SLOT[x.state] || [x.state, ''];
+      const w = when(x.at);
+      const acts = [
+        x.madeId && ['ready', 'approved', 'missed', 'failed', 'posted'].includes(x.state) ? `<button class="btn sm" data-plan-watch="${esc(x.madeId)}">Watch</button>` : '',
+        x.state === 'ready' ? `<button class="btn sm primary" data-plan-approve="${esc(x.madeId)}" data-v="1">Approve</button>` : '',
+        x.state === 'approved' ? `<button class="btn sm" data-plan-approve="${esc(x.madeId)}" data-v="0">Undo</button>` : '',
+        x.state === 'missed' ? `<button class="btn sm primary" data-plan-approve="${esc(x.madeId)}" data-v="1">Post it now</button>` : '',
+        ['waiting', 'ready', 'failed', 'tossed', 'missed'].includes(x.state) && !(x.state === 'waiting' && !x.problem && p.platforms.length) ? `<button class="btn sm quiet" data-plan-replace="${x.index}">Another idea</button>` : '',
+      ].join('');
+      return `<li><div class="when">${esc(w.day)}<span>${esc(w.time)}</span></div><div class="what"><div class="row" style="gap:8px"><span class="fmt">${esc(x.formatLabel)}</span><span class="pill ${cls}">${esc(word)}</span></div><b title="${esc(x.title)}">${esc(x.title)}</b>${x.problem ? `<span class="small" style="color:var(--bad)">${esc(x.problem)}</span>` : ''}</div><div class="acts">${acts}</div></li>`;
+    }).join('');
+  }
+
+  function renderMkClips() {
+    const L = mk.s.limits.clips;
+    $('#mk-clips').innerHTML = mk.s.clips.map((c) => `<div class="clip" data-clip="${esc(c.name)}">
+      <video src="/api/maker/clip/${encodeURIComponent(c.name)}#t=0.5" preload="metadata" muted playsinline controls aria-label="${esc(c.file)}"></video>
+      <div class="body">
+        <div class="row" style="gap:8px"><b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${esc(c.file)}</b><span class="small muted">${secs(c.seconds)} seconds · ${c.width}×${c.height} · ${c.audio ? 'has sound' : 'no sound (music is added)'}</span></div>
+        <label class="small" style="display:grid;gap:5px;font-weight:600;color:var(--ink-2)">What does this clip show? <span class="hint" style="font-weight:400;color:var(--ink-3)">A sentence is plenty. The title and captions are written from this.</span>
+          <textarea class="inp" rows="2" maxlength="${L.note}" data-clip-note placeholder="Walking through how a site gets built, step by step">${esc(c.note)}</textarea></label>
+        <div class="trim">Use from <input class="inp" type="number" min="0" step="0.1" value="${c.start}" data-clip-start aria-label="Start, in seconds"> to <input class="inp" type="number" min="0" step="0.1" value="${c.end}" data-clip-end aria-label="End, in seconds"> seconds <span class="muted">(at most ${L.use})</span></div>
+        <div class="row"><button class="btn primary" data-clip-finish="${esc(c.name)}" ${mk.s.making || !mk.s.ai.ready || !mk.s.brief ? 'disabled' : ''}>Finish this clip</button><button class="btn quiet" data-clip-remove="${esc(c.name)}">Remove</button></div>
+      </div></div>`).join('');
+  }
+
+  function renderMaker() { if (!mk.s) return; renderAi(); renderPlan(); renderBrief(); renderMkClips(); renderIdeas(); renderMade(); renderAuto(); }
 
   $('#v-make').addEventListener('submit', async (e) => {
     if (e.target.id === 'mk-key') {
@@ -969,6 +1057,30 @@
       } catch (e) { toast(`${f.name}: ${e.message}`); }
     }
   }
+  async function uploadClips(files) {
+    for (const f of files) {
+      if (!/\.(mp4|mov|m4v)$/i.test(f.name) && !/^video\//.test(f.type)) { toast(`${f.name}: use an MP4 or MOV video.`); continue; }
+      const btn = $('#mk-add-clip'); btn.disabled = true; btn.textContent = `Adding ${f.name}…`;
+      try { const r = await api(`/api/maker/clip?name=${encodeURIComponent(f.name)}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: f }); mk.s.clips = r.clips; mk.s.problem = r.problem; renderMkClips(); renderPlan(); renderIdeas(); toast(`Added. Now say what it shows, then press Finish this clip.`); }
+      catch (e) { toast(`${f.name}: ${e.message}`); }
+      btn.disabled = false; btn.textContent = '+ Add a clip (MP4 or MOV, up to 1 GB). Or drop it here.';
+    }
+  }
+  async function saveClipBox(box) {
+    const r = await post('/api/maker/clip/update', { name: box.dataset.clip, note: box.querySelector('[data-clip-note]').value, start: Number(box.querySelector('[data-clip-start]').value), end: Number(box.querySelector('[data-clip-end]').value) });
+    mk.s.clips = r.clips;
+    return r.clip;
+  }
+  $('#mk-pick-clip').addEventListener('change', (e) => { uploadClips([...e.target.files]); e.target.value = ''; });
+  const clipDrop = $('#mk-add-clip');
+  clipDrop.addEventListener('dragover', (e) => { e.preventDefault(); clipDrop.classList.add('over'); });
+  clipDrop.addEventListener('dragleave', () => clipDrop.classList.remove('over'));
+  clipDrop.addEventListener('drop', (e) => { e.preventDefault(); clipDrop.classList.remove('over'); uploadClips([...e.dataTransfer.files]); });
+  $('#mk-clips').addEventListener('change', async (e) => {
+    const box = e.target.closest('[data-clip]'); if (!box || !e.target.matches('[data-clip-start],[data-clip-end],[data-clip-note]')) return;
+    try { const c = await saveClipBox(box); box.querySelector('[data-clip-start]').value = c.start; box.querySelector('[data-clip-end]').value = c.end; renderPlan(); }
+    catch (err) { toast(err.message); }
+  });
   $('#mk-pick').addEventListener('change', (e) => { uploadPhotos([...e.target.files], false); e.target.value = ''; });
   $('#mk-pick-logo').addEventListener('change', (e) => { uploadPhotos([...e.target.files], true); e.target.value = ''; });
 
@@ -992,6 +1104,46 @@
       try { await post('/api/maker/make', { idea, platforms }); toast('Making it now. It takes about a minute.'); await loadMaker(); $('#mk-made').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) { toast(err.message); mkb.disabled = false; }
       return;
     }
+    if (t.closest('#mk-plan-make')) {
+      const platforms = [...mk.planPicked];
+      if (!platforms.length) return toast('Choose at least one account to post to.');
+      mk.planning = true; renderPlan();
+      try { const r = await post('/api/maker/plan/make', { perWeek: Number($('#mk-plan-n').value), platforms, every: $('#mk-plan-every').checked }); mk.s.plan = r.plan; toast('Planned. Each post is made in turn and shows up in Made for you.'); }
+      catch (err) { toast(err.message); }
+      mk.planning = false; await loadMaker(); return;
+    }
+    const ap = t.closest('[data-plan-approve]');
+    if (ap) {
+      try { const r = await post('/api/maker/plan/approve', { madeId: ap.dataset.planApprove, approved: ap.dataset.v === '1' }); mk.s.plan = r.plan; const x = r.plan.slots.find((y) => y.madeId === ap.dataset.planApprove); toast(ap.dataset.v === '1' ? `Approved. It posts ${when(x.at).day} at ${when(x.at).time} while the app is open.` : 'Not approved. It waits for you.'); await loadMaker(); }
+      catch (err) { toast(err.message); }
+      return;
+    }
+    const rp = t.closest('[data-plan-replace]');
+    if (rp) {
+      rp.disabled = true; rp.textContent = 'Thinking…';
+      try { const r = await post('/api/maker/plan/replace', { index: Number(rp.dataset.planReplace) }); mk.s.plan = r.plan; await loadMaker(); }
+      catch (err) { toast(err.message); rp.disabled = false; rp.textContent = 'Another idea'; }
+      return;
+    }
+    const wt = t.closest('[data-plan-watch]');
+    if (wt) { const el = document.getElementById(`made-${wt.dataset.planWatch}`); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.querySelector('video')?.focus(); } return; }
+    if (t.closest('#mk-add-clip')) return $('#mk-pick-clip').click();
+    const fin = t.closest('[data-clip-finish]');
+    if (fin) {
+      const box = fin.closest('[data-clip]');
+      const platforms = [...mk.picked];
+      if (!platforms.length) return toast('Choose at least one account to write captions for.');
+      if (box.querySelector('[data-clip-note]').value.trim().length < 3) { box.querySelector('[data-clip-note]').focus(); return toast('Say in a few words what the clip shows first.'); }
+      fin.disabled = true;
+      try {
+        await saveClipBox(box);
+        await post('/api/maker/clip/finish', { name: fin.dataset.clipFinish, platforms });
+        toast('Finishing it now. A longer clip takes a minute or two.'); await loadMaker(); $('#mk-made').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (err) { toast(err.message); fin.disabled = false; }
+      return;
+    }
+    const crm = t.closest('[data-clip-remove]');
+    if (crm) { try { const r = await post('/api/maker/clip/remove', { name: crm.dataset.clipRemove }); mk.s.clips = r.clips; mk.s.problem = r.problem; renderMkClips(); renderPlan(); renderIdeas(); } catch (err) { toast(err.message); } return; }
     const pv = t.closest('[data-mk-preview]'), pn = t.closest('[data-mk-post]'), dc = t.closest('[data-mk-discard]');
     if (pv || pn) {
       const m = mk.s.made.find((x) => x.id === (pv || pn).dataset[pv ? 'mkPreview' : 'mkPost']);
@@ -1029,7 +1181,13 @@
     try { const r = await post(`/api/maker/made/${id}/captions`, { captions: { [p]: c } }); const i = mk.s.made.findIndex((x) => x.id === id); if (i >= 0) mk.s.made[i].captions = r.captions; } catch (err) { toast(err.message); }
   });
   $('#v-make').addEventListener('change', async (e) => {
-    if (e.target.name === 'mkp') { mk.picked = new Set($$('input[name="mkp"]:checked').map((i) => i.value)); return; }
+    if (e.target.name === 'mkp') { if (e.target.checked) mk.picked.add(e.target.value); else mk.picked.delete(e.target.value); $('#mk-chips').innerHTML = chipsHtml('mkp', mk.picked); $('#mk-chips-clips').innerHTML = chipsHtml('mkp', mk.picked); return; }
+    if (e.target.name === 'mkplan' || e.target.id === 'mk-plan-n' || e.target.id === 'mk-plan-every') {
+      if (e.target.name === 'mkplan') { if (e.target.checked) mk.planPicked.add(e.target.value); else mk.planPicked.delete(e.target.value); }
+      try { const r = await post('/api/maker/plan', { perWeek: Number($('#mk-plan-n').value), platforms: [...mk.planPicked], every: $('#mk-plan-every').checked }); mk.s.plan = r.plan; if (e.target.id === 'mk-plan-every') toast(r.plan.every ? 'A new week is planned by itself when this one ends. Each post still waits for your approval.' : 'Off. Press Plan my week when you want a new week.'); }
+      catch (err) { toast(err.message); }
+      renderPlan(); return;
+    }
     if (e.target.id === 'mk-auto' || e.target.id === 'mk-perweek' || e.target.name === 'mka') {
       const want = { on: $('#mk-auto').checked, perWeek: Number($('#mk-perweek').value), platforms: $$('input[name="mka"]:checked').map((i) => i.value) };
       try { const r = await post('/api/maker/auto', want); mk.s.auto = r.auto; if (e.target.id === 'mk-auto') toast(r.auto.on ? 'The app will now make and post by itself.' : 'Off. Every post waits for you again.'); }

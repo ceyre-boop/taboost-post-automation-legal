@@ -17,12 +17,19 @@
 // own Chrome, calls window.renderPost(), and gets back an MP4: 1080×1920, 30 fps, H.264
 // video and AAC sound, encoded here with WebCodecs and packed by mp4-muxer (MIT). The
 // music is made here too, by an OfflineAudioContext, so there is nothing licensed in it.
+//
+// Each format (src/maker/formats.ts) has its own layout. A card's background is one of the
+// person's photos or a stretch of one of their clips. A "clip" post is their own video,
+// fitted to vertical over a blurred copy of itself, with a title, timed captions, their
+// own sound (if it has any) under the music, and the end card.
 import { Muxer, ArrayBufferTarget } from '/vendor/mp4-muxer.mjs';
 
 const W = 1080, H = 1920, FPS = 30, FADE = 0.35;
 // Space the platforms' own buttons and captions cover. Text stays out of it.
 const SAFE = { top: 230, bottom: 430, left: 84, right: 170 };
+const CX = (SAFE.left + W - SAFE.right) / 2;   // the middle of the space text can use
 const FONT = '-apple-system, "SF Pro Display", system-ui, "Helvetica Neue", Arial, sans-serif';
+const RED = '#e5484d';
 const params = new URLSearchParams(location.search);
 const q = (path) => `${path}${path.includes('?') ? '&' : '?'}set=${encodeURIComponent(params.get('set') || '')}${params.get('rk') ? `&rk=${encodeURIComponent(params.get('rk'))}` : ''}`;
 const status = (t) => { document.getElementById('status').textContent = t; };
@@ -49,30 +56,59 @@ function fit(ctx, text, weight, size, min, maxWidth, maxLines) {
   for (let s = size; s >= min; s -= 4) {
     ctx.font = `${weight} ${s}px ${FONT}`;
     const lines = wrap(ctx, text, maxWidth);
-    if (lines.length <= maxLines) return { size: s, lines };
+    if (lines.length <= maxLines && lines.every((l) => ctx.measureText(l).width <= maxWidth)) return { size: s, lines };
   }
   ctx.font = `${weight} ${min}px ${FONT}`;
   return { size: min, lines: wrap(ctx, text, maxWidth) };
 }
 function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
-
-function drawPhoto(ctx, img, local, dur, seed) {
-  if (!img) { ctx.fillStyle = '#1d2128'; ctx.fillRect(0, 0, W, H); return; }
-  const scale = Math.max(W / img.width, H / img.height);
-  const zoom = 1.04 + 0.08 * (local / dur);                   // a slow push in
-  const dir = seed % 2 ? 1 : -1;
-  const w = img.width * scale * zoom, h = img.height * scale * zoom;
-  const x = (W - w) / 2 + dir * 26 * (local / dur), y = (H - h) / 2;
-  ctx.drawImage(img, x, y, w, h);
-  const g = ctx.createLinearGradient(0, 0, 0, H);                // keep white text readable on any photo
-  g.addColorStop(0, 'rgba(0,0,0,0.38)'); g.addColorStop(0.35, 'rgba(0,0,0,0.10)'); g.addColorStop(0.62, 'rgba(0,0,0,0.30)'); g.addColorStop(1, 'rgba(0,0,0,0.72)');
+function shade(ctx, top = 0.38, mid = 0.1, low = 0.3, bottom = 0.72) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);                // keep white text readable on any picture
+  g.addColorStop(0, `rgba(0,0,0,${top})`); g.addColorStop(0.35, `rgba(0,0,0,${mid})`); g.addColorStop(0.62, `rgba(0,0,0,${low})`); g.addColorStop(1, `rgba(0,0,0,${bottom})`);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 }
 
-function drawHook(ctx, card, local, color) {
+/* ---------- what's behind the text ---------- */
+const dims = (src) => (src instanceof HTMLVideoElement ? [src.videoWidth, src.videoHeight] : [src.width, src.height]);
+
+/** A photo or clip frame filling the screen, moving slowly. `move` picks which way. */
+function drawBack(ctx, src, local, dur, move, { gray = false, dark = 0 } = {}) {
+  if (!src) { ctx.fillStyle = '#1d2128'; ctx.fillRect(0, 0, W, H); return; }
+  const [sw, sh] = dims(src);
+  const scale = Math.max(W / sw, H / sh);
+  const p = local / Math.max(0.1, dur);
+  const kind = move % 4;
+  const zoom = kind === 2 ? 1.14 - 0.08 * p : 1.04 + 0.08 * p;        // push in, or pull back
+  const w = sw * scale * zoom, h = sh * scale * zoom;
+  const dx = kind === 0 ? 26 * p : kind === 1 ? -26 * p : 0;
+  const dy = kind === 3 ? -30 * p : 0;
+  if (gray) ctx.filter = 'grayscale(1) brightness(0.82)';
+  ctx.drawImage(src, (W - w) / 2 + dx, (H - h) / 2 + dy, w, h);
+  ctx.filter = 'none';
+  shade(ctx);
+  if (dark) { ctx.fillStyle = `rgba(0,0,0,${dark})`; ctx.fillRect(0, 0, W, H); }
+}
+
+/** A soft, darkened copy of the picture behind a clip that doesn't fill the screen. */
+// Drawn small and blurred (cheap), then stretched: soft, with no blocks.
+const TW = 135, TH = 240, tiny = new OffscreenCanvas(TW, TH), tctx = tiny.getContext('2d');
+function drawBlurred(ctx, src) {
+  const [sw, sh] = dims(src);
+  const s = Math.max(TW / sw, TH / sh) * 1.15;
+  tctx.filter = 'blur(7px)';
+  tctx.drawImage(src, (TW - sw * s) / 2, (TH - sh * s) / 2, sw * s, sh * s);
+  tctx.filter = 'none';
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(tiny, 0, 0, W, H);
+  ctx.fillStyle = 'rgba(8,10,14,0.62)'; ctx.fillRect(0, 0, W, H);
+}
+
+/* ---------- the cards, by format ---------- */
+
+function drawHook(ctx, text, local, color, centerY = 760) {
   const maxW = W - SAFE.left - SAFE.right;
-  const { size, lines } = fit(ctx, card.text.toUpperCase(), 900, 132, 84, maxW - 40, 4);
-  const lh = size * 1.12, total = lines.length * lh, top = 760 - total / 2;
+  const { size, lines } = fit(ctx, text.toUpperCase(), 900, 132, 76, maxW - 40, 4);
+  const lh = size * 1.12, total = lines.length * lh, top = centerY - total / 2;
   ctx.textBaseline = 'middle';
   lines.forEach((line, i) => {
     const d = ease((local - i * 0.08) / 0.4);
@@ -85,7 +121,8 @@ function drawHook(ctx, card, local, color) {
   ctx.globalAlpha = 1;
 }
 
-function drawPoint(ctx, card, local, color, index, count) {
+/** Quick tips: a numbered box low on the screen. */
+function drawTip(ctx, card, local, color) {
   const maxW = W - SAFE.left - SAFE.right - 80;
   const { size, lines } = fit(ctx, card.text, 800, 86, 60, maxW, 5);
   const lh = size * 1.2, pad = 44, boxH = lines.length * lh + pad * 2 + 40;
@@ -94,11 +131,131 @@ function drawPoint(ctx, card, local, color, index, count) {
   ctx.globalAlpha = d;
   ctx.fillStyle = 'rgba(14,16,20,0.78)'; roundRect(ctx, SAFE.left, y0 + (1 - d) * 50, W - SAFE.left - SAFE.right, boxH, 28); ctx.fill();
   ctx.fillStyle = color; roundRect(ctx, SAFE.left, y0 + (1 - d) * 50, 14, boxH, 7); ctx.fill();
-  ctx.font = `700 34px ${FONT}`; ctx.fillStyle = color; ctx.textBaseline = 'top';
-  ctx.fillText(`${index} / ${count}`, SAFE.left + pad, y0 + pad - 6 + (1 - d) * 50);
+  ctx.font = `700 34px ${FONT}`; ctx.fillStyle = color === '#ffffff' ? '#ffffff' : color; ctx.textBaseline = 'top';
+  ctx.fillText(`${card.index} / ${card.count}`, SAFE.left + pad, y0 + pad - 6 + (1 - d) * 50);
   ctx.font = `800 ${size}px ${FONT}`; ctx.fillStyle = '#ffffff';
   lines.forEach((line, i) => ctx.fillText(line, SAFE.left + pad, y0 + pad + 40 + i * lh + (1 - d) * 50));
   ctx.globalAlpha = 1;
+}
+
+/** 1-2-3 steps: a big step number, the step on a panel, and dots for where you are. */
+function drawStep(ctx, card, local, color) {
+  const d = ease(local / 0.4);
+  const cx = SAFE.left + 100, cy = 520;
+  ctx.globalAlpha = d;
+  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx, cy, 100 * (0.7 + 0.3 * d), 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = inkOn(color); ctx.font = `900 120px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(String(card.index), cx, cy + 6);
+  ctx.textAlign = 'left'; ctx.font = `800 40px ${FONT}`;
+  const label = `STEP ${card.index} OF ${card.count}`, lw = ctx.measureText(label).width;
+  ctx.fillStyle = 'rgba(14,16,20,0.74)'; roundRect(ctx, cx + 124, cy - 38, lw + 48, 76, 38); ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.fillText(label, cx + 148, cy + 2);
+  const maxW = W - SAFE.left - SAFE.right - 80;
+  const { size, lines } = fit(ctx, card.text, 800, 92, 60, maxW, 5);
+  const lh = size * 1.18, top = 700;
+  ctx.fillStyle = 'rgba(14,16,20,0.74)'; roundRect(ctx, SAFE.left - 10, top - 44 + (1 - d) * 40, maxW + 80, lines.length * lh + 88, 28); ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'top'; ctx.font = `800 ${size}px ${FONT}`;
+  lines.forEach((l, k) => ctx.fillText(l, SAFE.left + 30, top + k * lh + (1 - d) * 40));
+  for (let k = 1; k <= card.count; k++) {
+    ctx.fillStyle = k <= card.index ? color : 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.arc(SAFE.left + 24 + (k - 1) * 48, H - SAFE.bottom - 40, 13, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** A label pill and big text under it: myth/fact and problem/fix. */
+function drawLabeled(ctx, label, bg, ink, text, local, { strike = false, check = false } = {}) {
+  const d = ease(local / 0.35);
+  const maxW = W - SAFE.left - SAFE.right;
+  ctx.globalAlpha = d;
+  ctx.font = `900 54px ${FONT}`;
+  const lw = ctx.measureText(label).width + (check ? 72 : 0);
+  const ly = 560 + (1 - d) * 30;
+  ctx.fillStyle = bg; roundRect(ctx, SAFE.left, ly, lw + 68, 98, 49); ctx.fill();
+  ctx.fillStyle = ink; ctx.strokeStyle = ink; ctx.textBaseline = 'middle';
+  let tx = SAFE.left + 34;
+  if (check) { ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(tx, ly + 50); ctx.lineTo(tx + 20, ly + 70); ctx.lineTo(tx + 54, ly + 30); ctx.stroke(); tx += 72; }
+  ctx.fillText(label, tx, ly + 52);
+  const { size, lines } = fit(ctx, text, 800, 98, 62, maxW - 70, 6);
+  const lh = size * 1.18, top = ly + 170;
+  ctx.font = `800 ${size}px ${FONT}`;
+  const pw = Math.min(maxW + 20, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 70);
+  ctx.fillStyle = 'rgba(14,16,20,0.66)'; roundRect(ctx, SAFE.left - 10, top - 36, pw, lines.length * lh + 72, 28); ctx.fill();
+  ctx.textBaseline = 'top'; ctx.fillStyle = '#ffffff';
+  lines.forEach((l, k) => ctx.fillText(l, SAFE.left + 24, top + k * lh));
+  if (strike) {
+    const p = ease((local - 1.1) / 0.5);
+    if (p > 0) {
+      ctx.strokeStyle = RED; ctx.lineWidth = Math.max(8, size * 0.11); ctx.lineCap = 'round';
+      lines.forEach((l, k) => { const w = ctx.measureText(l).width; const y = top + k * lh + size * 0.56; ctx.beginPath(); ctx.moveTo(SAFE.left + 18, y); ctx.lineTo(SAFE.left + 18 + (w + 12) * p, y); ctx.stroke(); });
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** A question in a speech bubble. */
+function drawQuestion(ctx, text, local, color) {
+  const d = ease(local / 0.45), sc = 0.9 + 0.1 * d;
+  const maxW = W - SAFE.left - SAFE.right;
+  const { size, lines } = fit(ctx, text, 800, 84, 54, maxW - 90, 5);
+  const lh = size * 1.2, boxH = 150 + lines.length * lh + 30, y = 820 - boxH / 2;
+  ctx.save();
+  ctx.globalAlpha = d; ctx.translate(SAFE.left + maxW / 2, y + boxH / 2); ctx.scale(sc, sc); ctx.translate(-maxW / 2, -boxH / 2);
+  ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 44;
+  ctx.fillStyle = '#ffffff'; roundRect(ctx, 0, 0, maxW, boxH, 38); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.beginPath(); ctx.moveTo(80, boxH - 2); ctx.lineTo(66, boxH + 50); ctx.lineTo(142, boxH - 2); ctx.fill();
+  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(80, 78, 42, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = inkOn(color); ctx.font = `900 50px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', 80, 82);
+  ctx.textAlign = 'left'; ctx.fillStyle = '#5b6170'; ctx.font = `700 38px ${FONT}`; ctx.fillText('Good question', 146, 80);
+  ctx.fillStyle = '#0e1014'; ctx.font = `800 ${size}px ${FONT}`; ctx.textBaseline = 'top';
+  lines.forEach((l, k) => ctx.fillText(l, 44, 142 + k * lh));
+  ctx.restore();
+}
+
+/** Big centred text with a bar under it: answers, and what a number means. */
+function drawCentered(ctx, text, local, color) {
+  const d = ease(local / 0.4);
+  const maxW = W - SAFE.left - SAFE.right;
+  const { size, lines } = fit(ctx, text, 800, 100, 64, maxW, 5);
+  const lh = size * 1.16, total = lines.length * lh, top = 880 - total / 2;
+  ctx.globalAlpha = d; ctx.font = `800 ${size}px ${FONT}`;
+  const pw = Math.min(maxW + 40, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 96);
+  ctx.fillStyle = 'rgba(14,16,20,0.68)'; roundRect(ctx, CX - pw / 2, top - 48 + (1 - d) * 30, pw, total + 130, 32); ctx.fill();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = '#ffffff';
+  lines.forEach((l, k) => ctx.fillText(l, CX, top + k * lh + (1 - d) * 30));
+  const bw = 200 * d; ctx.fillStyle = color; roundRect(ctx, CX - bw / 2, top + total + 28 + (1 - d) * 30, bw, 14, 7); ctx.fill();
+  ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+}
+
+/** One number, counted up, with what it counts under it. */
+function shownNumber(stat, p) {
+  const m = /^([^\d]*)(\d[\d,]*(?:\.\d+)?)(.*)$/.exec(stat);
+  if (!m) return stat;
+  const raw = m[2], target = parseFloat(raw.replace(/,/g, ''));
+  if (!raw.includes('.') && !raw.includes(',') && target >= 1900 && target <= 2100) return stat; // a year: don't count up to it
+  const dec = (raw.split('.')[1] || '').length, v = target * p;
+  const num = dec ? v.toFixed(dec) : raw.includes(',') ? Math.round(v).toLocaleString('en-US') : String(Math.round(v));
+  return m[1] + num + m[3];
+}
+function drawStat(ctx, card, local, color) {
+  const d = ease(local / 0.35);
+  const shown = shownNumber(card.stat || '', ease(local / 1.3));
+  const maxW = W - SAFE.left - SAFE.right;
+  let size = 380; ctx.font = `900 ${size}px ${FONT}`;
+  while (size > 140 && ctx.measureText(card.stat || shown).width > maxW) { size -= 10; ctx.font = `900 ${size}px ${FONT}`; }
+  ctx.globalAlpha = d; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = rgba(color, 0.9); ctx.shadowBlur = 60; ctx.fillStyle = '#ffffff';
+  ctx.fillText(shown, CX, 720 + (1 - d) * 40);
+  ctx.shadowBlur = 0;
+  const { size: ls, lines } = fit(ctx, card.text.toUpperCase(), 900, 64, 44, maxW - 60, 3);
+  const lh = ls * 1.2, top = 720 + size * 0.55 + 40;
+  lines.forEach((l, k) => {
+    const w = ctx.measureText(l).width;
+    ctx.fillStyle = color; roundRect(ctx, CX - w / 2 - 26, top + k * lh, w + 52, lh - 8, 12); ctx.fill();
+    ctx.fillStyle = inkOn(color); ctx.fillText(l, CX, top + k * lh + lh / 2 - 2);
+  });
+  ctx.textAlign = 'left'; ctx.globalAlpha = 1;
 }
 
 function drawEnd(ctx, card, local, color, logo, business) {
@@ -128,6 +285,70 @@ function drawEnd(ctx, card, local, color, logo, business) {
 function drawProgress(ctx, t, total, color) {
   ctx.fillStyle = 'rgba(255,255,255,0.22)'; roundRect(ctx, SAFE.left, 120, W - SAFE.left * 2, 10, 5); ctx.fill();
   ctx.fillStyle = color; roundRect(ctx, SAFE.left, 120, (W - SAFE.left * 2) * Math.min(1, t / total), 10, 5); ctx.fill();
+}
+
+/* ---------- a clip post: the person's own video ---------- */
+
+/** A caption pill, fading in and out across its time. */
+function drawCaption(ctx, line, local, y, maxW) {
+  const a = Math.min(ease((local - line.from) / 0.25), ease((line.to - local) / 0.25));
+  if (a <= 0) return;
+  const { size, lines } = fit(ctx, line.text, 800, 64, 46, maxW - 64, 2);
+  const lh = size * 1.22, boxH = lines.length * lh + 44;
+  ctx.globalAlpha = a; ctx.font = `800 ${size}px ${FONT}`;
+  const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 64;
+  ctx.fillStyle = 'rgba(14,16,20,0.82)'; roundRect(ctx, CX - w / 2, y - boxH / 2 + (1 - a) * 12, w, boxH, 26); ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  lines.forEach((l, k) => ctx.fillText(l, CX, y - boxH / 2 + 22 + k * lh + (1 - a) * 12));
+  ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+}
+
+function drawClipCard(ctx, card, local, video, color) {
+  const [vw, vh] = dims(video);
+  const aspect = vw / vh;
+  const maxW = W - SAFE.left - SAFE.right;
+  if (aspect > 0.9) {
+    // Wide or square: the clip across the middle, the title above it, captions below it.
+    drawBlurred(ctx, video);
+    const cw = W, ch = Math.min(1000, W / aspect), y0 = aspect > 1.2 ? 545 : 470;
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 40;
+    ctx.drawImage(video, 0, y0, cw, ch); ctx.restore();
+    const d = ease(local / 0.45);
+    const { size, lines } = fit(ctx, card.text, 900, 92, 58, W - SAFE.left * 2, 3);
+    const lh = size * 1.12, band = [SAFE.top - 40, y0 - 20], top = (band[0] + band[1]) / 2 - (lines.length * lh) / 2;
+    ctx.globalAlpha = d; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 18;
+    lines.forEach((l, k) => ctx.fillText(l, W / 2, top + k * lh + (1 - d) * 20));
+    ctx.shadowBlur = 0; ctx.fillStyle = color; const bw = 160 * d; roundRect(ctx, W / 2 - bw / 2, y0 - 34, bw, 10, 5); ctx.fill();
+    ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+    const capY = Math.min(H - SAFE.bottom - 70, y0 + ch + 120);
+    for (const line of card.lines || []) drawCaption(ctx, line, local, capY, maxW);
+    return;
+  }
+  // Upright: fill the screen if it's close to 9:16, otherwise fit it to the height over a blurred copy.
+  if (Math.abs(aspect - 9 / 16) < 0.05) {
+    const s = Math.max(W / vw, H / vh); ctx.drawImage(video, (W - vw * s) / 2, (H - vh * s) / 2, vw * s, vh * s);
+  } else {
+    drawBlurred(ctx, video);
+    const s = Math.min(W / vw, H / vh); ctx.drawImage(video, (W - vw * s) / 2, (H - vh * s) / 2, vw * s, vh * s);
+  }
+  shade(ctx, 0.45, 0.02, 0.1, 0.55);
+  const hookFor = Math.min(3.2, (card.lines?.[0]?.from ?? 3.2) + 0.6);
+  if (local < hookFor + FADE) {
+    ctx.save(); ctx.globalAlpha = Math.min(1, ease((hookFor + FADE - local) / FADE)); drawHook(ctx, card.text, local, color, 560); ctx.restore();
+  }
+  if (local > hookFor) {
+    // The title stays up, small, once the hook has had its moment.
+    const a = ease((local - hookFor) / 0.4);
+    const { size, lines } = fit(ctx, card.text, 800, 50, 38, maxW - 60, 2);
+    const lh = size * 1.2;
+    ctx.globalAlpha = a; ctx.font = `800 ${size}px ${FONT}`; ctx.textBaseline = 'top';
+    const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 56;
+    ctx.fillStyle = color; roundRect(ctx, SAFE.left, SAFE.top - 40, w, lines.length * lh + 36, 22); ctx.fill();
+    ctx.fillStyle = inkOn(color); lines.forEach((l, k) => ctx.fillText(l, SAFE.left + 28, SAFE.top - 22 + k * lh));
+    ctx.globalAlpha = 1;
+  }
+  for (const line of card.lines || []) drawCaption(ctx, line, local, H - SAFE.bottom - 120, maxW);
 }
 
 /* ---------- music, made here: nothing licensed ---------- */
@@ -169,17 +390,63 @@ async function makeMusic(seconds, mood, seed) {
   return ctx.startRendering();
 }
 
-/* ---------- the whole video ---------- */
-async function loadImage(url) { const r = await fetch(q(url)); if (!r.ok) throw new Error(`photo ${r.status}`); return createImageBitmap(await r.blob()); }
+/** The clip's own sound at full level with the music quietly under it. Null if it can't be read. */
+async function withClipSound(music, clip, seconds) {
+  try {
+    const r = await fetch(q(`/api/maker/clip/${encodeURIComponent(clip.name)}`));
+    if (!r.ok) return null;
+    const sr = 48000;
+    const own = await new OfflineAudioContext(2, sr, sr).decodeAudioData(await r.arrayBuffer());
+    const mix = new OfflineAudioContext(2, Math.ceil(sr * seconds), sr);
+    const m = mix.createBufferSource(), mg = mix.createGain(); m.buffer = music; mg.gain.value = 0.22; m.connect(mg).connect(mix.destination); m.start(0);
+    const c = mix.createBufferSource(), cg = mix.createGain(); c.buffer = own; cg.gain.value = 1;
+    c.connect(cg).connect(mix.destination);
+    const len = Math.max(0, clip.end - clip.start);
+    cg.gain.setValueAtTime(1, Math.max(0, len - 0.4)); cg.gain.linearRampToValueAtTime(0.0001, len);
+    c.start(0, clip.start, len);
+    return await mix.startRendering();
+  } catch { return null; }
+}
 
+/* ---------- loading ---------- */
+async function loadImage(url) { const r = await fetch(q(url)); if (!r.ok) throw new Error(`photo ${r.status}`); return createImageBitmap(await r.blob()); }
+function loadVideo(name) {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    const t = setTimeout(() => reject(new Error('the clip took too long to open')), 90_000);
+    v.addEventListener('loadeddata', () => { clearTimeout(t); resolve(v); }, { once: true });
+    v.addEventListener('error', () => { clearTimeout(t); reject(new Error(`this Chrome can't open the clip (${v.error?.code || '?'})`)); }, { once: true });
+    v.src = q(`/api/maker/clip/${encodeURIComponent(name)}`);
+  });
+}
+/** Move a clip to `t` seconds and wait until that frame can be drawn. */
+function seek(v, t) {
+  const to = Math.max(0, Math.min((v.duration || t) - 0.04, t));
+  if (Math.abs(v.currentTime - to) < 0.0005 && v.readyState >= 2) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => { clearTimeout(timer); v.removeEventListener('seeked', done); resolve(); };
+    const timer = setTimeout(done, 4000);
+    v.addEventListener('seeked', done);
+    v.currentTime = to;
+  });
+}
+
+/* ---------- the whole video ---------- */
 window.renderPost = async () => {
   const id = params.get('id');
   const jr = await fetch(q(`/api/maker/job/${encodeURIComponent(id)}`));
   if (!jr.ok) throw new Error(`job ${jr.status}`);
   const job = await jr.json();
-  status('Loading photos…');
-  const images = new Map();
-  for (const c of job.cards) if (c.photo && !images.has(c.photo)) images.set(c.photo, await loadImage(`/api/maker/photo/${encodeURIComponent(c.photo)}`));
+  const format = job.format || 'tips';
+  status('Loading photos and clips…');
+  const images = new Map(), videos = new Map();   // photos by name; clips by card number (each card seeks its own)
+  for (const [i, c] of job.cards.entries()) {
+    const m = c.media || (c.photo ? { type: 'photo', name: c.photo } : null);
+    if (!m) continue;
+    if (m.type === 'photo' && !images.has(m.name)) images.set(m.name, await loadImage(`/api/maker/photo/${encodeURIComponent(m.name)}`));
+    if (m.type === 'clip') videos.set(i, await loadVideo(m.name));
+  }
   const logo = job.logo ? await loadImage(`/api/maker/photo/${encodeURIComponent(job.logo)}`) : null;
 
   const starts = []; let total = 0;
@@ -199,30 +466,44 @@ window.renderPost = async () => {
   // The incoming card during a crossfade is drawn here first, then laid over at the fade's opacity.
   const off = new OffscreenCanvas(W, H), octx = off.getContext('2d');
   let thumb = null;
+  const backOf = (i) => { const c = job.cards[i], m = c.media || (c.photo ? { type: 'photo', name: c.photo } : null); return !m ? null : m.type === 'clip' ? videos.get(i) : images.get(m.name); };
+  /** Put every clip on screen at time t in the right place before drawing. */
+  const ready = async (i, local) => {
+    const c = job.cards[i], v = videos.get(i);
+    if (v && c.media) await seek(v, (c.media.from || 0) + local);
+  };
   const drawCard = (g, i, local) => {
     const c = job.cards[i];
     g.globalAlpha = 1;
-    if (c.kind === 'end') drawEnd(g, c, local, job.color, logo, job.business);
-    else {
-      drawPhoto(g, images.get(c.photo), local, c.seconds, i);
-      if (c.kind === 'hook') drawHook(g, c, local, job.color);
-      else drawPoint(g, c, local, job.color, c.index, c.count);
-    }
-    g.globalAlpha = 1;
+    if (c.kind === 'end') return drawEnd(g, c, local, job.color, logo, job.business);
+    if (c.kind === 'clip') return drawClipCard(g, c, local, videos.get(i), job.color);
+    const second = c.kind === 'point' && c.index === 2;
+    const gray = (format === 'mythfact' || format === 'problemfix') && c.kind === 'point' && c.index === 1;
+    const isClip = (c.media && c.media.type === 'clip');
+    drawBack(g, backOf(i), local, c.seconds, job.seed + i, { gray, dark: (isClip ? 0.34 : 0) + (format === 'question' || format === 'number' ? 0.14 : 0) });
+    if (c.kind === 'stat') return drawStat(g, c, local, job.color);
+    if (c.kind === 'hook') return format === 'question' ? drawQuestion(g, c.text, local, job.color) : drawHook(g, c.text, local, job.color);
+    if (format === 'steps') return drawStep(g, c, local, job.color);
+    if (format === 'mythfact') return second ? drawLabeled(g, 'FACT', job.color, inkOn(job.color), c.text, local, { check: true }) : drawLabeled(g, 'MYTH', RED, '#ffffff', c.text, local, { strike: c.index === 1 });
+    if (format === 'problemfix') return second ? drawLabeled(g, 'THE FIX', job.color, inkOn(job.color), c.text, local, { check: true }) : drawLabeled(g, 'THE PROBLEM', 'rgba(255,255,255,0.18)', '#ffffff', c.text, local);
+    if (format === 'question' || format === 'number') return drawCentered(g, c.text, local, job.color);
+    return drawTip(g, c, local, job.color);
   };
   for (let n = 0; n < frames; n++) {
     if (failure) throw failure;
     const t = n / FPS;
     let i = starts.findLastIndex((s) => s <= t); if (i < 0) i = 0;
     const local = t - starts[i];
+    const next = i + 1, fading = next < job.cards.length && starts[next] - t < FADE;
+    await ready(i, local);
+    if (fading) await ready(next, 0);
     ctx.save(); drawCard(ctx, i, local); ctx.restore();
-    const next = i + 1;
-    if (next < job.cards.length && starts[next] - t < FADE) {
+    if (fading) {
       octx.save(); drawCard(octx, next, 0); octx.restore();
       ctx.globalAlpha = 1 - (starts[next] - t) / FADE; ctx.drawImage(off, 0, 0); ctx.globalAlpha = 1;
     }
     if (job.cards[i].kind !== 'end') drawProgress(ctx, t, total, job.color);
-    if (!thumb && job.cards[i].kind === 'hook' && local >= 1.1) thumb = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.86));
+    if (!thumb && i === 0 && local >= Math.min(1.1, job.cards[0].seconds / 2)) thumb = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.86));
     const frame = new VideoFrame(canvas, { timestamp: Math.round((n * 1e6) / FPS), duration: Math.round(1e6 / FPS) });
     ve.encode(frame, { keyFrame: n % (FPS * 2) === 0 });
     frame.close();
@@ -232,9 +513,11 @@ window.renderPost = async () => {
   await ve.flush();
   if (failure) throw failure;
 
+  let ownSound = false;
   if (withAudio) {
     status('Adding music…');
-    const music = await makeMusic(total, job.mood, job.seed);
+    let music = await makeMusic(total, job.mood, job.seed);
+    if (job.clip?.audio) { const mixed = await withClipSound(music, job.clip, total); if (mixed) { music = mixed; ownSound = true; } }
     const ae = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: (e) => { failure = e; } });
     ae.configure(acfg);
     const L = music.getChannelData(0), R = music.getChannelData(1), step = 1024;
@@ -254,7 +537,7 @@ window.renderPost = async () => {
   if (!up.ok) throw new Error(`save ${up.status}`);
   if (thumb) await fetch(q(`/api/maker/made/${encodeURIComponent(id)}/thumb`), { method: 'POST', headers: { 'content-type': 'image/jpeg' }, body: thumb });
   status('Done.');
-  return { seconds: total, bytes: bytes.length, audio: withAudio };
+  return { seconds: total, bytes: bytes.length, audio: withAudio, ownSound };
 };
 </script>
 </body>

@@ -9,7 +9,7 @@ import { openView, getView, closeView } from "./remote-view.ts";
 import { withBrowser, pageFor } from "./browser.ts";
 import { PLATFORMS, getPlatform } from "./platforms/index.ts";
 import { buildBatch, finishedVideos, recoverLatestBatch, runBatch as runBatchEngine, type Batch } from "./batch.ts";
-import { autoTick, makerRoute, markSetConnected } from "./maker/routes.ts";
+import { autoTick, makerRoute, markSetConnected, planTick } from "./maker/routes.ts";
 import { listMade, saveMade } from "./maker/store.ts";
 import { openHistory, recordPost, setHistoryAccount } from "./history.ts";
 import { APP_NAME, APP_PLATFORMS, addSet, allSets, appPlatformIds, isAppPlatform, cleanSpace, disconnect, displayName, explain, readSettings, uploadName, writeSettings } from "./app.ts";
@@ -577,6 +577,19 @@ function startAutoMake(): void {
     }).catch((e) => console.error("[auto-make]", String((e as Error).message ?? e).split("\n")[0]));
   }, 10 * 60_000);
   autoTimer.unref();
+  // The week's plan: approved posts go out on time, and the next one is made as soon as the last is done.
+  const planTimer = setInterval(() => {
+    const set = readSettings().activeSet;
+    void planTick(set, PORT, {
+      batchRunning: () => batchRunning || batchClaimed,
+      startPost: (video, captions, platforms, live, deleteAfter) => {
+        const entry = startBatch([{ path: video, captions }], platforms, live, readSettings().spaceSec, "", accountProfile(set), deleteAfter);
+        if (live) madeBatches.set(entry.batch.id, set);
+        return entry.batch.id;
+      },
+    }).catch((e) => console.error("[plan]", String((e as Error).message ?? e).split("\n")[0]));
+  }, 60_000);
+  planTimer.unref();
 }
 
 // Run directly from the CLI (`node src/server.ts`), but not when imported by the app.

@@ -74,6 +74,10 @@ test("another website can't read the brief, upload photos, make or post a video,
     ["POST", "/api/maker/ideas", "{}"], ["POST", "/api/maker/make", JSON.stringify({ idea: { title: "x" }, platforms: ["tiktok"] })],
     ["POST", "/api/maker/ai", JSON.stringify({ apiKey: "sk-ant-" + "e".repeat(40) })], ["POST", "/api/maker/auto", JSON.stringify({ on: true })],
     ["POST", "/api/maker/made/m-0000000000/post", JSON.stringify({ platforms: ["tiktok"], live: true })], ["GET", "/render", ""],
+    ["POST", "/api/maker/clip?name=a.mp4", "x"], ["POST", "/api/maker/clip/update", JSON.stringify({ name: "c-000000000000.mp4", note: "evil" })],
+    ["POST", "/api/maker/clip/remove", JSON.stringify({ name: "c-000000000000.mp4" })], ["POST", "/api/maker/clip/finish", JSON.stringify({ name: "c-000000000000.mp4", platforms: ["tiktok"] })],
+    ["GET", "/api/maker/clip/c-000000000000.mp4", ""], ["POST", "/api/maker/plan", JSON.stringify({ every: true })], ["POST", "/api/maker/plan/make", JSON.stringify({ platforms: ["tiktok"] })],
+    ["POST", "/api/maker/plan/approve", JSON.stringify({ madeId: "m-0000000000", approved: true })], ["POST", "/api/maker/plan/replace", JSON.stringify({ index: 0 })],
   ] as const) {
     for (const h of [EVIL, { ...OWN, "sec-fetch-site": "cross-site" }, { host: "evil.example" }] as Record<string, string>[]) {
       const r = await send(m, p, h, body);
@@ -82,6 +86,25 @@ test("another website can't read the brief, upload photos, make or post a video,
   }
   assert.equal(readFileSync(join(brief.makerDir(""), "brief.json"), "utf8"), before);
   assert.equal(existsSync(join(DIR, "secrets.json")), false);
+});
+
+test("a clip is uploaded from the app's own page, read back by it, and nothing outside the clips folder can be reached by name", async () => {
+  const box = (type: string, ...parts: Buffer[]) => { const body = Buffer.concat(parts); const h = Buffer.alloc(8); h.writeUInt32BE(8 + body.length); h.write(type, 4, "latin1"); return Buffer.concat([h, body]); };
+  const mvhd = Buffer.alloc(100); mvhd.writeUInt32BE(600, 12); mvhd.writeUInt32BE(600 * 12, 16);
+  const tkhd = Buffer.alloc(84); tkhd.writeInt32BE(0x10000, 40); tkhd.writeInt32BE(0x10000, 56); tkhd.writeUInt32BE(1280 * 65536, 76); tkhd.writeUInt32BE(720 * 65536, 80);
+  const hdlr = Buffer.alloc(24); hdlr.write("vide", 8, "latin1");
+  const clip = Buffer.concat([box("ftyp", Buffer.from("isom\0\0\0\0isom", "latin1")), box("mdat", Buffer.alloc(500)), box("moov", box("mvhd", mvhd), box("trak", box("tkhd", tkhd), box("mdia", box("hdlr", hdlr))))]);
+  const up = await send("POST", "/api/maker/clip?name=walkthrough.mp4", { origin: OWN.origin, "content-type": "application/octet-stream" }, clip);
+  assert.equal(up.status, 200, up.text);
+  const c = JSON.parse(up.text).clip;
+  assert.deepEqual([c.seconds, c.width, c.height, c.file], [12, 1280, 720, "walkthrough.mp4"]);
+  const back = await send("GET", `/api/maker/clip/${c.name}`, { range: "bytes=0-7" });
+  assert.equal(back.status, 206);
+  for (const p of ["/api/maker/clip/..%2Fbrief.json", "/api/maker/clip/clips.json", "/api/maker/clip/c-000000000000.mp4", `/api/maker/clip/${c.name}?rk=guess`]) assert.equal((await send("GET", p, {})).status, 404, p);
+  const bad = await send("POST", "/api/maker/clip?name=x.mp4", { origin: OWN.origin, "content-type": "application/octet-stream" }, "<script>alert(1)</script>");
+  assert.match(bad.text, /isn't a video the app can read/);
+  assert.match((await send("POST", "/api/maker/clip/update", OWN, JSON.stringify({ name: c.name, start: 0, end: 200 }))).text, /"end":12/);
+  assert.match((await send("POST", "/api/maker/plan/approve", OWN, JSON.stringify({ madeId: "m-0000000000", approved: true }))).text, /isn't in this week's plan/);
 });
 
 test("only the render page, holding its one-time key, can read a render job or hand back a video", async () => {

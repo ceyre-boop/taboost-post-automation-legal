@@ -134,10 +134,11 @@ export function removePhoto(set: string, name: string): boolean {
   return true;
 }
 
-/** Ready to make a post: a valid brief and enough photos. Returns what's missing, or "". */
-export function notReady(set: string): string {
+/** Ready to make a post from photos: a valid brief and enough photos (clips count too).
+ *  Returns what's missing, or "". Finishing one of their own clips needs only the brief. */
+export function notReady(set: string, clipCount = 0): string {
   if (!readBrief(set)) return "Fill in your business details first.";
-  const n = listPhotos(set).length;
-  if (n < LIMITS.photos.min) return `Add at least ${LIMITS.photos.min} photos (you have ${n}). Five or more gives better variety.`;
+  const n = listPhotos(set).length + clipCount;
+  if (n < LIMITS.photos.min) return `Add at least ${LIMITS.photos.min} photos or clips (you have ${n}). Five or more gives better variety.`;
   return "";
 }

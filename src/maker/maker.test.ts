@@ -93,7 +93,7 @@ test("making needs a brief and at least 3 photos", () => {
   assert.match(brief.notReady("nobody"), /business details/);
   for (const n of brief.listPhotos("")) brief.removePhoto("", n);
   brief.savePhoto("", JPG); brief.savePhoto("", JPG);
-  assert.match(brief.notReady(""), /at least 3 photos \(you have 2\)/);
+  assert.match(brief.notReady(""), /at least 3 photos or clips \(you have 2\)/);
   brief.savePhoto("", JPG);
   assert.equal(brief.notReady(""), "");
 });
