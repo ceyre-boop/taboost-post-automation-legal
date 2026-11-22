@@ -4,7 +4,7 @@ import { join, dirname, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { APP_DIR, CDP_PORT, accountProfile, defaultProfile, type Profile } from "./config.ts";
-import { getDevice, createDevice, profileOf, type Device } from "./devices.ts";
+import { getDevice, createDevice, findDeviceByName, profileOf, type Device } from "./devices.ts";
 import { openView, getView, closeView } from "./remote-view.ts";
 import { withBrowser, pageFor } from "./browser.ts";
 import { PLATFORMS, getPlatform } from "./platforms/index.ts";
@@ -419,7 +419,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/device") {
       const { name } = JSON.parse((await readBody(req)).toString() || "{}");
-      const d = createDevice(String(name ?? ""));
+      const d = findDeviceByName(String(name ?? "")) ?? createDevice(String(name ?? ""));
       return json(res, 200, { id: d.id, name: d.name });
     }
     // --- sign in from the phone: stream the Mac's login page, replay taps/typing ---

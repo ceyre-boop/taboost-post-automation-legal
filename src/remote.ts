@@ -11,7 +11,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { networkInterfaces } from "node:os";
-import { writeFileSync, readFileSync, existsSync, mkdirSync, chmodSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, mkdirSync, chmodSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { launchChrome, killToolChrome } from "./chrome.ts";
 import { startServer } from "./server.ts";
@@ -19,6 +19,28 @@ import { CDP_PORT, APP_DIR } from "./config.ts";
 
 const URL_FILE = join(APP_DIR, "phone-url.txt");       // always holds the current live link
 const TOKEN_FILE = join(APP_DIR, "access-token.txt");  // stable key so the link survives restarts
+const LOCK_FILE = join(APP_DIR, "remote.lock");        // one phone remote per app folder
+
+/* Settings the official sign-ins need (client ids and secrets) live in .env next to the code,
+   filled in by the owner, never committed (.gitignore). */
+const ENV_FILE = join(import.meta.dirname, "..", ".env");
+if (existsSync(ENV_FILE)) { try { process.loadEnvFile(ENV_FILE); } catch (e) { console.error(`Couldn't read .env: ${(e as Error).message}`); } }
+
+/** Two remotes on one app folder fight over its Chrome profiles and ports (Nov 2026: a second,
+ *  hand-started one gave a phone the same Chrome port as another phone). The second one stops. */
+function takeLock(): void {
+  try {
+    const held = JSON.parse(readFileSync(LOCK_FILE, "utf8")) as { pid: number; port: number };
+    if (held.pid && held.pid !== process.pid) {
+      try { process.kill(held.pid, 0); console.error(`Another phone remote is already running for this app folder (pid ${held.pid}, port ${held.port}). Stopping.`); process.exit(1); } catch { /* stale */ }
+    }
+  } catch { /* no lock */ }
+  mkdirSync(APP_DIR, { recursive: true });
+  writeFileSync(LOCK_FILE, JSON.stringify({ pid: process.pid, port: Number(arg("port")) || 4747 }));
+  process.on("exit", () => { try { if (JSON.parse(readFileSync(LOCK_FILE, "utf8")).pid === process.pid) unlinkSync(LOCK_FILE); } catch { /* gone */ } });
+}
+/** The key and the link let anyone on the Wi-Fi post: only this Mac's user may read them. */
+for (const f of [TOKEN_FILE, URL_FILE]) { try { if (existsSync(f)) chmodSync(f, 0o600); } catch { /* not ours */ } }
 
 /** Reuse the saved access key if there is one, so the phone link stays the same. */
 function stableToken(): string {
@@ -103,6 +125,7 @@ function box(lines: string[]): void {
 }
 
 async function main(): Promise<void> {
+  takeLock();
   console.log("Starting Northbound Poster phone remote…");
   await launchChrome("https://www.tiktok.com/tiktokstudio/upload"); // opens the profile's Chrome
 

@@ -8,3 +8,8 @@ desktop/node_modules
 desktop/dist
 desktop/release
 desktop/electron-builder.*.json
+
+# official sign-in settings (client ids and secrets): filled in by the owner, never committed
+.env
+.env.*
+!.env.example
