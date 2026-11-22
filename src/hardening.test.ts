@@ -236,3 +236,11 @@ test("the phone's sign-in view only shows the platform's sign-in sites", () => {
   for (const [p, u] of [["youtube", "https://accounts.google.com/signin"], ["youtube", "https://studio.youtube.com/"], ["x", "https://x.com/i/flow/login"], ["threads", "https://www.threads.net/login"], ["tiktok", "https://www.tiktok.com/login"], ["instagram", "about:blank"]]) assert.equal(signInAllowed(p, u), true, u);
   for (const [p, u] of [["youtube", "https://mail.google.com/"], ["youtube", "https://myaccount.google.com/"], ["x", "https://www.dropbox.com/x.com"], ["x", "http://x.com/"], ["tiktok", "https://tiktok.com.evil.example/"], ["facebook", "https://evil.example/facebook.com"], ["linkedin", "javascript:alert(1)"]]) assert.equal(signInAllowed(p, u), false, u);
 });
+
+test("the app attaches to its own Chrome as a local browser, so videos over 50 MB upload (a creator's 147 MB clip failed on every platform without it)", () => {
+  const src = readFileSync(join(import.meta.dirname, "chrome.ts"), "utf8");
+  assert.match(src, /export const LOCAL = \{ isLocal: true \}/);
+  const calls = src.match(/connectOverCDP\([^)]*\)/g) ?? [];
+  assert.ok(calls.length >= 2);
+  for (const c of calls) assert.match(c, /LOCAL\)$/, c);
+});

@@ -149,11 +149,17 @@ async function reopenAndConnect(profile: Profile, startUrl: string): Promise<Bro
     while (Date.now() < gone && (await cdpAlive(profile.port))) await sleep(250);
     await sleep(400);
     await launchChrome(startUrl, profile);
-    try { return await chromium.connectOverCDP(`http://127.0.0.1:${profile.port}`); }
+    try { return await chromium.connectOverCDP(`http://127.0.0.1:${profile.port}`, LOCAL); }
     catch (e) { last = e; }
   }
   throw last;
 }
+
+/** The app's Chrome always runs on this same Mac. Saying so lets Playwright hand Chrome the
+ *  video's path instead of copying the file through the connection, which it refuses to do
+ *  for anything over 50 MB (most phone videos). Found 2026-11-22: a creator's 147 MB clip failed
+ *  on every platform with "Cannot transfer files larger than 50Mb". */
+export const LOCAL = { isLocal: true } as const;
 
 export interface Attached {
   browser: Browser;
@@ -166,7 +172,7 @@ export async function attach(profile: Profile = defaultProfile, startUrl = "abou
   const { port } = profile;
   let browser: Browser;
   try {
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, LOCAL);
   } catch (e) {
     // A Chrome left over from an earlier attach can refuse context management.
     // Same fix RnR's _repair_window uses: close ONLY our profile's Chrome and relaunch.
