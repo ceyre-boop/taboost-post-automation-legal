@@ -7,18 +7,19 @@
 //                       once and never sees a key.
 //   "byo"               The client's own Anthropic API key, through the official SDK.
 //
-// A client's AI NEVER goes through a personal Claude subscription. There is one
-// developer switch, POSTER_DEV_MAX=1, for the developer's own Mac only (see devMax()).
-// The TABOOST tools in src/pipeline/ use the Max plan on purpose (internal work); this
-// module never imports them, and src/maker/*.test.ts checks that.
+// A client's AI NEVER goes through a personal subscription. The developer's own path
+// lives in dev-provider.ts, which the client build replaces with an empty stub, so a
+// client bundle doesn't contain it at all (src/bundle.test.ts). The TABOOST tools in
+// src/pipeline/ are separate internal work; this module never imports them.
 //
 // The model is handed text and hands text back. It has no tools; code (checks.ts)
 // checks everything it writes. Every call is logged with tokens and estimated cost.
 import Anthropic from "@anthropic-ai/sdk";
-import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT_DIR } from "../config.ts";
+import { DEFAULT_AI_MODE } from "../flavor.ts";
+import { devProvider } from "./dev-provider.ts";
 
 export type Mode = "hosted" | "byo";
 /** What the call is for. The task decides the model. */
@@ -86,9 +87,13 @@ const byoKey = (): string => readSecrets().apiKey || config("ANTHROPIC_API_KEY")
 export const hasByoKey = (): boolean => byoKey() !== "";
 export const isApiKey = (k: string): boolean => /^sk-ant-[A-Za-z0-9_\-]{20,300}$/.test(k.trim());
 
-/** The mode the person chose. Anything other than exactly "byo" is Hosted. */
+/** The mode the person chose; with nothing chosen yet, this build's default (flavor.ts). */
 const modeFile = () => join(root(), "maker-ai.json");
-export function readMode(): Mode { try { return JSON.parse(readFileSync(modeFile(), "utf8")).mode === "byo" ? "byo" : "hosted"; } catch { return "hosted"; } }
+export function readMode(): Mode {
+  let saved: unknown;
+  try { saved = JSON.parse(readFileSync(modeFile(), "utf8")).mode; } catch { saved = undefined; }
+  return saved === "byo" ? "byo" : saved === "hosted" ? "hosted" : DEFAULT_AI_MODE;
+}
 export function writeMode(mode: Mode): Mode {
   mkdirSync(root(), { recursive: true });
   const m: Mode = mode === "byo" ? "byo" : "hosted";
@@ -110,42 +115,30 @@ export function hostedEndpoint(): { url: string; problem: string } {
   }
 }
 
-/* ---------------- the developer switch ---------------- */
-
-let claudeOnPath: boolean | null = null;
-/** DEVELOPER ONLY. POSTER_DEV_MAX=1 in the environment of the process that starts the app
- *  makes the maker use Claude Code on this Mac instead of the API, so development does not
- *  spend API money. Never from settings, never from the app folder's .env, never from a
- *  request; the dashboard shows a red banner whenever it is on. */
-export function devMax(): boolean {
-  if (process.env.POSTER_DEV_MAX !== "1") return false;
-  if (claudeOnPath === null) claudeOnPath = spawnSync("which", ["claude"]).status === 0;
-  return claudeOnPath;
-}
-
 /* ---------------- status, for the dashboard ---------------- */
 
-export interface AiStatus { mode: Mode; ready: boolean; problem: string; hostedConfigured: boolean; byoKeySaved: boolean; devMax: boolean; models: Record<Task, string>; }
+export interface AiStatus { mode: Mode; ready: boolean; problem: string; hostedConfigured: boolean; byoKeySaved: boolean; dev: boolean; devLabel: string; models: Record<Task, string>; }
 
 export function aiStatus(mode: Mode = readMode()): AiStatus {
   const hosted = hostedEndpoint();
-  const base = { mode, hostedConfigured: !!hosted.url, byoKeySaved: hasByoKey(), devMax: devMax(), models: MODELS };
-  if (base.devMax) return { ...base, ready: true, problem: "" };
+  const dev = devProvider();
+  const base = { mode, hostedConfigured: !!hosted.url, byoKeySaved: hasByoKey(), dev: !!dev, devLabel: dev?.label ?? "", models: MODELS };
+  if (dev) return { ...base, ready: true, problem: "" };
   if (mode === "byo") return { ...base, ready: base.byoKeySaved, problem: base.byoKeySaved ? "" : "No API key is saved yet. Add one under Make, in AI settings." };
   return { ...base, ready: !!hosted.url, problem: hosted.url ? "" : `${hosted.problem} Until it is, you can add your own API key under Make, in AI settings.` };
 }
 
 /* ---------------- the usage log ---------------- */
 
-export interface Usage { ts: string; mode: Mode | "dev-max"; task: Task; model: string; input_tokens: number; output_tokens: number; est_cost_usd: number; }
+export interface Usage { ts: string; mode: string; task: Task; model: string; input_tokens: number; output_tokens: number; est_cost_usd: number; }
 
 export function estimateCost(model: string, input: number, output: number): number {
   const [pin, pout] = PRICES[model] ?? PRICES["claude-sonnet-5-5"];
   return Math.round(((input * pin + output * pout) / 1_000_000) * 1e6) / 1e6;
 }
 const usageFile = () => join(root(), "usage.jsonl");
-function logUsage(mode: Usage["mode"], task: Task, model: string, input: number, output: number): void {
-  const row: Usage = { ts: new Date().toISOString(), mode, task, model, input_tokens: input, output_tokens: output, est_cost_usd: mode === "dev-max" ? 0 : estimateCost(model, input, output) };
+function logUsage(mode: string, task: Task, model: string, input: number, output: number, free = false): void {
+  const row: Usage = { ts: new Date().toISOString(), mode, task, model, input_tokens: input, output_tokens: output, est_cost_usd: free ? 0 : estimateCost(model, input, output) };
   try { mkdirSync(root(), { recursive: true }); appendFileSync(usageFile(), JSON.stringify(row) + "\n", { mode: 0o600 }); } catch { /* a log that cannot be written never stops the work */ }
 }
 export function readUsage(): Usage[] {
@@ -218,26 +211,6 @@ async function byo(task: Task, system: string, user: string): Promise<Answer> {
   }
 }
 
-/** DEVELOPER ONLY (see devMax). Claude Code on this Mac, headless, with no tools. */
-function developerClaudeCode(system: string, user: string): Promise<Answer> {
-  return new Promise((resolve, reject) => {
-    const args = ["-p", "--tools", "", "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands", "--no-session-persistence", "--output-format", "json", "--system-prompt", system];
-    const p = spawn("claude", args, { cwd: "/tmp", stdio: ["pipe", "pipe", "pipe"] });
-    let out = "";
-    p.stdout.on("data", (d) => (out += d));
-    const t = setTimeout(() => p.kill(), 180_000);
-    p.on("close", (code) => {
-      clearTimeout(t);
-      try {
-        const j = JSON.parse(out) as { result?: string; is_error?: boolean; usage?: { input_tokens?: number; output_tokens?: number } };
-        if (code === 0 && !j.is_error && typeof j.result === "string") return resolve({ text: j.result, model: "claude-code (developer)", input: Number(j.usage?.input_tokens ?? 0), output: Number(j.usage?.output_tokens ?? 0) });
-      } catch { /* fall through */ }
-      reject(new AiError("Developer mode: Claude Code didn't answer."));
-    });
-    p.stdin.end(user);
-  });
-}
-
 /* ---------------- what the rest of the maker calls ---------------- */
 
 type Thinker = (task: Task, system: string, user: string) => Promise<string>;
@@ -247,9 +220,9 @@ export function setThinker(fn: Thinker | null): void { override = fn; }
 
 export async function think(task: Task, system: string, user: string, mode: Mode = readMode()): Promise<string> {
   if (override) return override(task, system, user);
-  const dev = devMax();
-  const answer = dev ? await developerClaudeCode(system, user) : mode === "byo" ? await byo(task, system, user) : await hosted(task, system, user);
-  logUsage(dev ? "dev-max" : mode, task, answer.model, answer.input, answer.output);
+  const dev = devProvider();
+  const answer = dev ? await dev.think(system, user, (msg) => new AiError(msg, true)) : mode === "byo" ? await byo(task, system, user) : await hosted(task, system, user);
+  logUsage(dev ? dev.mode : mode, task, answer.model, answer.input, answer.output, !!dev);
   return answer.text;
 }
 

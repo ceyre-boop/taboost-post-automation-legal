@@ -31,7 +31,8 @@ export interface MakerContext {
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(HERE, "..", "..");
+/** The render page and its library. The packaged app points POSTER_ASSETS_DIR at its own copies. */
+const ASSETS = process.env.POSTER_ASSETS_DIR || join(HERE, "..", "..", "dashboard");
 
 /* ---------------- render keys ---------------- */
 
@@ -159,12 +160,12 @@ export async function makerRoute(req: IncomingMessage, res: ServerResponse, url:
   // --- the render page and its one library ---
   if (GET && path === "/render") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'" });
-    res.end(readFileSync(join(ROOT, "dashboard", "render.html")));
+    res.end(readFileSync(join(ASSETS, "render.html")));
     return true;
   }
   if (GET && path === "/vendor/mp4-muxer.mjs") {
     res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "max-age=3600", "x-content-type-options": "nosniff" });
-    res.end(readFileSync(join(ROOT, "dashboard", "vendor", "mp4-muxer.mjs")));
+    res.end(readFileSync(join(ASSETS, "vendor", "mp4-muxer.mjs")));
     return true;
   }
   if (!path.startsWith("/api/maker")) return false;

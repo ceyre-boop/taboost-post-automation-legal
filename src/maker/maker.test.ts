@@ -285,27 +285,33 @@ test("each request is logged with tokens and estimated cost, and the log holds n
   assert.doesNotMatch(readFileSync(join(DIR, "usage.jsonl"), "utf8"), /sk-ant|SECRET/);
 });
 
-test("the developer switch can't be reached from a .env file or a mode name", () => {
+test("the developer switch can't be reached from a .env file or a mode name", async () => {
+  const { devProvider } = await import("./dev-provider.ts");
   writeFileSync(join(DIR, ".env"), "POSTER_DEV_MAX=1\n");
-  assert.equal(ai.devMax(), false);
-  for (const v of ["0", "true", "yes", ""]) { process.env.POSTER_DEV_MAX = v; assert.equal(ai.devMax(), false); }
+  assert.equal(devProvider(), null);
+  assert.equal(ai.aiStatus().dev, false);
+  for (const v of ["0", "true", "yes", ""]) { process.env.POSTER_DEV_MAX = v; assert.equal(devProvider(), null); }
   delete process.env.POSTER_DEV_MAX;
   assert.equal(ai.writeMode("claude" as never), "hosted");
   writeFileSync(join(DIR, ".env"), "");
 });
 
-test("no client path reaches the Max plan: the maker never imports the TABOOST pipeline's model, and spawns Claude Code in one developer-only place", () => {
+test("no client path reaches the Max plan: Claude Code is started in one developer-only file, which only the developer providers import", () => {
   const dir = import.meta.dirname;
-  for (const f of readdirSync(dir).filter((x) => x.endsWith(".ts") && !x.endsWith(".test.ts"))) {
+  const files = readdirSync(dir).filter((x) => x.endsWith(".ts") && !x.endsWith(".test.ts"));
+  for (const f of files) {
     const src = readFileSync(join(dir, f), "utf8");
-    assert.doesNotMatch(src, /pipeline\/llm|askClaude/, `${f} imports the Max-plan pipeline model`);
+    assert.doesNotMatch(src, /pipeline\/llm|askClaude/, `${f} imports the TABOOST pipeline's model`);
     assert.doesNotMatch(src, /sk-ant-[A-Za-z0-9]{10,}/, `${f} has a key in it`);
-    const claude = /spawn\(\s*"claude"/.test(src);
-    if (f === "ai.ts") {
-      assert.equal(claude, true);
-      assert.equal((src.match(/spawn\(\s*"claude"/g) ?? []).length, 1);
-      assert.ok(src.indexOf('spawn("claude"') > src.indexOf("function developerClaudeCode"));
-      assert.match(src, /const answer = dev \? await developerClaudeCode\(system, user\) : mode === "byo" \? await byo\(task, system, user\) : await hosted\(task, system, user\);/);
-    } else assert.equal(claude, false, `${f} starts Claude Code`);
+    const mentionsClaude = /["'`]claude["'`]|Claude Code|findClaude|runClaudeCode/.test(src);
+    assert.equal(mentionsClaude, ["claude-code.ts", "dev-provider.ts", "dev-provider.me.ts"].includes(f), `${f} mentions Claude Code`);
+    const usesClaude = /claude-code\.ts/.test(src);
+    assert.equal(usesClaude, f === "dev-provider.ts" || f === "dev-provider.me.ts", `${f} imports the Claude Code runner`);
   }
+  const ai = readFileSync(join(dir, "ai.ts"), "utf8");
+  assert.doesNotMatch(ai, /POSTER_DEV_MAX|Claude Code|claude-code|\bMax\b/);
+  assert.match(ai, /import \{ devProvider \} from "\.\/dev-provider\.ts";/);
+  const stub = readFileSync(join(dir, "dev-provider.client.ts"), "utf8");
+  assert.doesNotMatch(stub, /import|spawn|claude|POSTER_DEV_MAX/i);
+  assert.match(stub, /export const devProvider = \(\): DevProvider \| null => null;/);
 });

@@ -1,15 +1,19 @@
-// Ad-hoc code-sign the macOS app after packaging. Without this, `identity: null`
-// leaves the app unsigned, and Apple Silicon reports a downloaded unsigned app as
-// "damaged and can't be opened" (a dead end). An ad-hoc signature makes it a normal
-// unsigned app: Gatekeeper shows "unidentified developer" and right-click → Open works.
-// (A real Developer ID + notarization — deferred — removes the prompt entirely.)
-const { execSync } = require("node:child_process");
+// After electron-builder lays out the .app: put Chrome for Testing inside it (for Macs with
+// no Chrome), then sign the whole app (sign.cjs). Runs before the .dmg is made.
+const { execFileSync } = require("node:child_process");
+const { existsSync, mkdirSync } = require("node:fs");
 const { join } = require("node:path");
+const { sign } = require("./sign.cjs");
 
 exports.default = async function afterPack(context) {
   if (context.electronPlatformName !== "darwin") return;
   const app = join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
-  console.log("Ad-hoc signing", app);
-  execSync(`codesign --force --deep --sign - ${JSON.stringify(app)}`, { stdio: "inherit" });
-  execSync(`codesign --verify --verbose ${JSON.stringify(app)}`, { stdio: "inherit" });
+  const cft = process.env.POSTER_CFT_APP;
+  if (cft && existsSync(cft)) {
+    const dest = join(app, "Contents", "Resources", "chrome");
+    mkdirSync(dest, { recursive: true });
+    console.log("Adding Chrome for Testing to the app");
+    execFileSync("ditto", [cft, join(dest, "Google Chrome for Testing.app")], { stdio: "inherit" });
+  }
+  sign(app, process.env.POSTER_FLAVOR || "client");
 };

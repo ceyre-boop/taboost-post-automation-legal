@@ -7,3 +7,4 @@ video/out
 desktop/node_modules
 desktop/dist
 desktop/release
+desktop/electron-builder.*.json

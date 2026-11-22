@@ -584,25 +584,28 @@ const invokedDirectly = (() => {
   try { return process.argv[1] ? fileURLToPath(import.meta.url) === process.argv[1] : false; }
   catch { return false; }
 })();
+/** Start on the first free port from `first`. If this app is already running on one of
+ *  them, return that one instead of starting a second copy (existing: true). */
+export async function startOnFreePort(first = PORT, open = false): Promise<{ url: string; port: number; existing: boolean; note: string }> {
+  for (let port = first; port <= first + 13; port++) {
+    try {
+      const r = await startServer({ port, open });
+      return { ...r, existing: false, note: port !== first ? `Port ${first} is used by another program, so ${APP_NAME} is on ${port}.` : "" };
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EADDRINUSE") throw e;
+      if (await ourAppOn(port)) return { url: `http://127.0.0.1:${port}`, port, existing: true, note: `${APP_NAME} is already running at http://127.0.0.1:${port}.` };
+    }
+  }
+  throw new Error(`ports ${first} to ${first + 13} are all in use`);
+}
+
 if (invokedDirectly) {
   // Port taken? If it's this app already, open it. Otherwise use the next free port and say so.
-  (async () => {
-    const first = PORT;
-    for (let port = first; port <= first + 13; port++) {
-      try {
-        await startServer({ port });
-        if (port !== first) console.log(`Port ${first} is used by another program, so ${APP_NAME} is on ${port}.`);
-        return;
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "EADDRINUSE") throw e;
-        if (await ourAppOn(port)) {
-          console.log(`${APP_NAME} is already running at http://127.0.0.1:${port}. Opening it.`);
-          if (!process.argv.includes("--no-open")) spawn("open", [`http://127.0.0.1:${port}`], { stdio: "ignore" }).unref();
-          process.exit(0);
-        }
-      }
+  startOnFreePort(PORT, !process.argv.includes("--no-open")).then((r) => {
+    if (r.note) console.log(r.note);
+    if (r.existing) {
+      if (!process.argv.includes("--no-open")) spawn("open", [r.url], { stdio: "ignore" }).unref();
+      process.exit(0);
     }
-    console.error(`${APP_NAME} couldn't start: ports ${first} to ${first + 13} are all in use.`);
-    process.exit(1);
-  })().catch((e) => { console.error(`${APP_NAME} couldn't start: ${(e as Error).message}`); process.exit(1); });
+  }).catch((e) => { console.error(`${APP_NAME} couldn't start: ${(e as Error).message}`); process.exit(1); });
 }

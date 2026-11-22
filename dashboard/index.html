@@ -282,6 +282,7 @@
       <h1>You're all set.</h1>
       <p class="lede" id="ob-done-text"></p>
       <div class="card promise" style="margin-bottom:26px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4.500l3 2"/></svg><div><b>Try a preview first.</b><p class="muted">Preview fills in everything on each site and stops right before the Post button, so you can see it work without anything going public.</p></div></div>
+      <div id="ob-ai"></div>
       <div class="foot"><button class="btn primary lg" id="ob-finish">Make my first post</button></div>
     </section>
   </div>
@@ -609,10 +610,29 @@
     $('#onboard').scrollTo(0, 0);
     if (n === 2) refreshStatus(true);
     if (n === 3) {
+      renderObAi();
       const names = connected().map((id) => state.status[id].label);
       $('#ob-done-text').textContent = `${names.length === 1 ? names[0] + ' is' : names.slice(0, -1).join(', ') + ' and ' + names.slice(-1) + ' are'} connected. You can add or remove accounts any time under Accounts.`;
     }
   }
+  // The post maker writes with AI. With nothing set up yet (a client's copy), ask for the
+  // person's own Anthropic key here. Posting their own videos works without it.
+  async function renderObAi() {
+    let ai = null;
+    try { ai = (await api('/api/maker')).ai; } catch { return; }
+    if (ai.ready) { $('#ob-ai').innerHTML = ''; return; }
+    $('#ob-ai').innerHTML = `<div class="card pad" style="margin-bottom:22px"><h2>One more thing: your API key</h2>
+      <p class="muted" style="margin-top:4px">The Make screen writes posts for you with an Anthropic API key. <a href="https://console.anthropic.com/" target="_blank" rel="noopener">Create an Anthropic account</a>, add a payment method under <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">Billing</a>, make a key under <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">API keys</a>, and paste it here. It stays on this Mac. A post usually costs a few cents to write.</p>
+      <form id="ob-key" class="row" autocomplete="off" style="margin-top:12px"><label class="small" for="ob-key-in" style="font-weight:600;color:var(--ink-2)">Anthropic API key</label><input class="inp" type="password" id="ob-key-in" autocomplete="new-password" placeholder="sk-ant-…" style="flex:1;min-width:220px" required><button class="btn primary" type="submit">Save key</button></form>
+      <p class="small" id="ob-key-err" role="alert" style="color:var(--bad);margin-top:8px" hidden></p>
+      <p class="small muted" style="margin-top:8px">You can skip this: posting your own videos works without a key, and you can add it later on the Make screen.</p></div>`;
+  }
+  $('#ob-ai').addEventListener('submit', async (e) => {
+    if (e.target.id !== 'ob-key') return;
+    e.preventDefault(); $('#ob-key-err').hidden = true;
+    try { await post('/api/maker/ai', { apiKey: $('#ob-key-in').value, mode: 'byo' }); toast('Key saved on this Mac.'); renderObAi(); }
+    catch (err) { $('#ob-key-err').textContent = err.message; $('#ob-key-err').hidden = false; }
+  });
   $('#ob-start').addEventListener('click', () => onboardStep(2));
   $('#ob-back').addEventListener('click', () => onboardStep(1));
   $('#ob-next').addEventListener('click', () => onboardStep(3));
@@ -838,7 +858,13 @@
   function renderAi() {
     const ai = mk.s.ai, u = mk.s.usage;
     $('#mk-usage').textContent = u.total.calls ? `AI use for making posts: ${plural(u.total.calls, 'request')}, about ${money(u.total.cost)} so far (${money(u.today.cost)} today). An estimate from the public price list.` : '';
-    if (ai.ready) { $('#mk-ai').innerHTML = ai.devMax ? '<div class="notice bad" style="margin-bottom:14px"><div><b>Developer mode.</b><span class="muted">The AI is this Mac\'s Claude Code. Never run a client\'s install like this.</span></div></div>' : ''; return; }
+    if (ai.ready) {
+      $('#mk-ai').innerHTML = '';
+      /* dev-only:start */
+      if (ai.dev) $('#mk-ai').innerHTML = `<div class="notice ${/Colin/.test(ai.devLabel) ? '' : 'bad'}" style="margin-bottom:14px"><div><b>Developer build.</b><span class="muted">${esc(ai.devLabel)}</span></div></div>`;
+      /* dev-only:end */
+      return;
+    }
     $('#mk-ai').innerHTML = `<div class="card pad" style="margin-bottom:14px"><h2>${ai.hostedConfigured || ai.mode === 'byo' ? 'The AI isn\'t ready' : 'One step first: add an API key'}</h2>
       <p class="muted" style="margin-top:4px">${ai.mode === 'byo' || !ai.hostedConfigured ? `The maker writes with an Anthropic API key. <a href="https://console.anthropic.com/" target="_blank" rel="noopener">Create an Anthropic account</a>, add a payment method under <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">Billing</a>, make a key under <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">API keys</a>, and paste it here. It stays on this Mac. A post usually costs a few cents to write.` : esc(ai.problem)}</p>
       <form id="mk-key" class="row" autocomplete="off" style="margin-top:12px"><label class="small" for="mk-key-in" style="font-weight:600;color:var(--ink-2)">Anthropic API key</label><input class="inp" type="password" id="mk-key-in" autocomplete="new-password" placeholder="sk-ant-…" style="flex:1;min-width:220px" required><button class="btn primary" type="submit">Save key</button></form>
