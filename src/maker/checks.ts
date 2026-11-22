@@ -23,9 +23,8 @@ export interface MadeScript {
 }
 
 /** What each platform takes, including the hashtags the app adds after the caption. */
-export const CAPTION_LIMITS: Record<string, number> = {
-  tiktok: 2200, instagram: 2200, youtube: 5000, x: 280, facebook: 2200, linkedin: 3000, threads: 500,
-};
+import { CAPTION_LIMITS } from "../platforms/limits.ts";
+export { CAPTION_LIMITS };
 export const LIMITS = { hookWords: 6, pointWords: 14, ctaWords: 8, points: { min: 1, max: 3 }, hashtags: { min: 1, max: 5 }, youtubeTitle: 100 };
 
 const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;

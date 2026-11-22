@@ -40,6 +40,8 @@ export async function openHistory(): Promise<any | null> {
     // Added later: older installs get the column the first time they open the file.
     const cols = db.prepare("PRAGMA table_info(posts)").all().map((c: any) => c.name);
     if (!cols.includes("account")) db.exec("ALTER TABLE posts ADD COLUMN account TEXT NOT NULL DEFAULT ''");
+    // Official posting (Nov 2026): how it went out, as whom, and where it is now.
+    for (const c of ["via", "identity", "remote_id", "link", "song", "device"]) if (!cols.includes(c)) db.exec(`ALTER TABLE posts ADD COLUMN ${c} TEXT NOT NULL DEFAULT ''`);
     return db;
   } catch {
     return null;
@@ -47,12 +49,13 @@ export async function openHistory(): Promise<any | null> {
 }
 
 /** Fire-and-forget: callers don't await, and a storage failure is never fatal. */
-export function recordPost(platform: string, video: string, caption: string, status: string): void {
+export interface PostExtra { via?: string; identity?: string; remote_id?: string; link?: string; song?: string; device?: string }
+export function recordPost(platform: string, video: string, caption: string, status: string, x: PostExtra = {}): void {
   void (async () => {
     try {
       const db = await openHistory();
       if (!db) return;
-      db.prepare("INSERT INTO posts (platform, video, caption, status, account) VALUES (?, ?, ?, ?, ?)").run(platform, video, caption, status, currentAccount);
+      db.prepare("INSERT INTO posts (platform, video, caption, status, account, via, identity, remote_id, link, song, device) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(platform, video, caption, status, currentAccount, x.via ?? "", x.identity ?? "", x.remote_id ?? "", x.link ?? "", x.song ?? "", x.device ?? "");
       db.close();
     } catch {}
   })();

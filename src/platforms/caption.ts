@@ -1,4 +1,5 @@
 /** Caption helpers shared by the platform adapters. All pure except typeCaption. */
+import { CAPTION_LIMITS } from "./limits.ts";
 
 const URL_RE = /^https?:\/\/[^\s]+/i;
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -112,4 +113,20 @@ export function stripAngle(s: string): string {
 export function youtubeParts(caption: string): { title: string; description: string } {
   const [first, ...rest] = stripAngle(caption).split(/\r?\n/);
   return { title: cutCodePoints((first ?? "").trim(), 100).trim() || "Untitled", description: rest.join("\n") };
+}
+
+/** The song line a post credits ("🎵 The Final Countdown by Europe"), added to a platform's caption
+ *  unless she switched it off for that platform, then the caption is held to the platform's limit
+ *  (the credit is kept; the words before it are shortened). Crediting is a courtesy, not a licence. */
+export function withSongCredit(text: string, platform: string, song?: { title?: string; artist?: string; credit?: Record<string, boolean> } | null): string {
+  const base = String(text ?? "");
+  const title = (song?.title ?? "").trim();
+  const credit = title && song?.credit?.[platform] !== false ? `🎵 ${title}${song?.artist?.trim() ? ` by ${song.artist.trim()}` : ""}` : "";
+  const withLine = credit && !base.includes(credit) ? (base.trim() ? `${base.trimEnd()}\n\n${credit}` : credit) : base;
+  if (platform === "x") return fitX(withLine).text;
+  const limit = CAPTION_LIMITS[platform];
+  if (!limit || [...withLine].length <= limit) return withLine;
+  if (!credit) return [...withLine].slice(0, limit).join("");
+  const room = limit - [...credit].length - 2;
+  return `${[...base.trimEnd()].slice(0, Math.max(0, room)).join("").trimEnd()}\n\n${credit}`;
 }

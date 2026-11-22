@@ -9,19 +9,33 @@ import { withBrowser, pageFor } from "./browser.ts";
 import { recordPost } from "./history.ts";
 import { APP_DIR, defaultProfile, type Profile } from "./config.ts";
 import { sleep } from "./sleep.ts";
+import type { OfficialResult, Song } from "./official/types.ts";
+import { postOfficial } from "./official/post.ts";
+import { spawnSync } from "node:child_process";
 
 export const BATCHES_DIR = join(APP_DIR, "batches");
 const VIDEO_EXTS = new Set([".mp4", ".mov", ".m4v", ".webm"]);
 
 /** "unconfirmed": the publish button was pressed but the app couldn't see the post go up
  *  (or the app stopped mid-post). It may well be live, so it is never retried by itself. */
-export type ItemStatus = "pending" | "posting" | "done" | "error" | "skipped" | "unconfirmed";
+export type ItemStatus = "pending" | "posting" | "done" | "error" | "skipped" | "unconfirmed" | "draft";
 export interface BatchItem {
   video: string;
   caption: string;
   platform: string;
   status: ItemStatus;
   note?: string;
+  /** "official": through the platform's own API with the phone's permission; else the Mac's browser */
+  via?: "official" | "browser";
+  /** which Page / Instagram account / channel, and its name */
+  identity?: string;
+  identityName?: string;
+  /** YouTube's title, when she wrote one */
+  title?: string;
+  song?: Song;
+  /** where it went: the platform's id for it, and a link */
+  remoteId?: string;
+  link?: string;
 }
 export interface Batch {
   id: string;
@@ -31,6 +45,9 @@ export interface Batch {
   deleteAfter?: boolean;
   spaceSec: number;
   items: BatchItem[];
+  /** the phone that posted it (its official permissions), and a private test (nothing public) */
+  device?: string;
+  test?: boolean;
 }
 
 const batchFile = (id: string) => join(BATCHES_DIR, `${id}.json`);
@@ -176,7 +193,7 @@ async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>): Prom
 /** Clips whose every post is finished one way or another (nothing left to try again). */
 export function finishedVideos(batch: Batch): string[] {
   const videos = [...new Set(batch.items.map((i) => i.video))];
-  return videos.filter((v) => batch.items.filter((i) => i.video === v).every((i) => i.status === "done" || i.status === "skipped" || i.status === "unconfirmed"));
+  return videos.filter((v) => batch.items.filter((i) => i.video === v).every((i) => i.status === "done" || i.status === "skipped" || i.status === "unconfirmed" || i.status === "draft"));
 }
 
 /** After a crash or restart: the newest batch, with anything that was mid-post marked
@@ -197,12 +214,22 @@ export function recoverLatestBatch(): Batch | null {
   return latest;
 }
 
+/** Seconds of video, when ffprobe can tell (Facebook Reels must be 3-90 s). */
+function durationOf(file: string): number | undefined {
+  try {
+    const r = spawnSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", file], { encoding: "utf8", timeout: 15_000 });
+    const n = Number(r.stdout?.trim());
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  } catch { return undefined; }
+}
+
 /**
- * Run (or resume) a batch. For speed, every platform for a given clip is posted
- * IN PARALLEL (one tab each, within one Chrome session); clips are processed in
- * order. LIVE posts are paced PER-PLATFORM: we only wait if the same account
- * posted less than `spaceSec` ago — time spent on other platforms counts, so
- * multi-platform batches rarely wait at all.
+ * Run (or resume) a batch. Official posts (the platform's own API, with the phone's permission)
+ * need no browser and go first; the rest are posted on the Mac's logged-in Chrome. For speed, every
+ * platform for a given clip is posted IN PARALLEL (two at a time); clips are processed in order.
+ * LIVE posts are paced PER-PLATFORM: we only wait if the same account posted less than `spaceSec`
+ * ago. A private test (`batch.test`) posts nothing public: YouTube private, Facebook draft, TikTok
+ * inbox, Instagram and LinkedIn skipped, browser platforms as a preview.
  */
 export async function runBatch(
   batch: Batch,
@@ -212,71 +239,89 @@ export async function runBatch(
 ): Promise<Batch> {
   const todo = batch.items.filter((i) => i.status === "pending" || i.status === "error");
   if (!todo.length) { log("Nothing to do — all items already done."); return batch; }
+  const browserLive = batch.live && !batch.test;
 
-  // Group remaining items by clip, preserving order.
-  const groups: { video: string; items: BatchItem[] }[] = [];
-  for (const it of todo) {
-    let g = groups.find((x) => x.video === it.video);
-    if (!g) { g = { video: it.video, items: [] }; groups.push(g); }
-    g.items.push(it);
-  }
-  await withBrowser(async (ctx) => {
-    for (const group of groups) {
-      const name = basename(group.video);
-      await pool(group.items, PARALLEL_UPLOADS, async (item) => {
-        // Pace repeats to the SAME account only (live).
-        const key = `${profile.dir}|${item.platform}`;
-        if (batch.live && lastPost.has(key)) {
-          const jitter = 0.75 + Math.random() * 0.5; // 0.75×–1.25×
-          const wait = Math.round(batch.spaceSec * 1000 * jitter) - (Date.now() - lastPost.get(key)!);
-          if (wait > 0) { log(`   …pacing ${item.platform}: ${Math.round(wait / 1000)}s`); await sleep(wait); }
-        }
-        item.status = "posting"; item.note = undefined;
-        saveBatch(batch); onUpdate(batch);
-        log(`▶ ${batch.live ? "" : "(dry) "}${name} → ${item.platform}`);
-        if (batch.live && !getPlatform(item.platform).verified) log(`   ⚠ ${item.platform} is unverified — keep an eye on this one.`);
-        let clicked = false;
+  const groupsOf = (items: BatchItem[]) => {
+    const groups: { video: string; items: BatchItem[] }[] = [];
+    for (const it of items) {
+      let g = groups.find((x) => x.video === it.video);
+      if (!g) { g = { video: it.video, items: [] }; groups.push(g); }
+      g.items.push(it);
+    }
+    return groups;
+  };
+  const extra = (item: BatchItem) => ({ via: item.via ?? "browser", identity: item.identityName ?? item.identity ?? "", remote_id: item.remoteId ?? "", link: item.link ?? "", song: item.song?.title ? `${item.song.title}${item.song.artist ? ` by ${item.song.artist}` : ""}` : "", device: batch.device ?? "" });
+
+  /** One item: pacing, status, history, and the "pressed post but couldn't confirm" rule. */
+  const runItem = async (item: BatchItem, post: (log: (m: string) => void, clicked: () => void) => Promise<OfficialResult | void>, ctx?: import("playwright-core").BrowserContext) => {
+    const name = basename(item.video);
+    const live = item.via === "official" ? batch.live : browserLive;
+    const key = `${item.via === "official" ? `official:${batch.device ?? ""}:${item.identity ?? ""}` : profile.dir}|${item.platform}`;
+    if (live && lastPost.has(key)) {
+      const jitter = 0.75 + Math.random() * 0.5; // 0.75×–1.25×
+      const wait = Math.round(batch.spaceSec * 1000 * jitter) - (Date.now() - lastPost.get(key)!);
+      if (wait > 0) { log(`   …pacing ${item.platform}: ${Math.round(wait / 1000)}s`); await sleep(wait); }
+    }
+    item.status = "posting"; item.note = undefined;
+    saveBatch(batch); onUpdate(batch);
+    log(`▶ ${live ? "" : "(dry) "}${name} → ${item.platform}${item.via === "official" ? " (official)" : ""}${item.identityName ? ` as ${item.identityName}` : ""}`);
+    if (live && item.via !== "official" && !getPlatform(item.platform).verified) log(`   ⚠ ${item.platform} is unverified — keep an eye on this one.`);
+    let clicked = false;
+    try {
+      const r = await post((m) => log(`   [${item.platform}] ${m}`), () => { clicked = true; });
+      item.status = r?.status ?? "done";
+      if (r?.remoteId) item.remoteId = r.remoteId;
+      if (r?.link) item.link = r.link;
+      if (r?.note) item.note = r.note;
+      recordPost(item.platform, item.video, item.caption, item.status === "draft" ? "draft" : item.status === "skipped" ? `skipped: ${item.note ?? ""}` : live ? "posted" : "dry-run", extra(item));
+      if (live && item.status === "done") lastPost.set(key, Date.now());
+      log(`${item.status === "draft" ? "✎" : "✓"} ${name} → ${item.platform}${item.note ? ` (${item.note})` : ""}`);
+      if (live && batch.deleteAfter && ctx && item.via !== "official" && item.status === "done") {
+        // The post is up either way, so a failed delete is a note, not a failed post
+        // (a failed item would be posted a second time on resume).
         try {
-          await postOnPage(ctx, item, batch.live, (m) => log(`   [${item.platform}] ${m}`), () => { clicked = true; });
-          item.status = "done";
-          recordPost(item.platform, item.video, item.caption, batch.live ? "posted" : "dry-run");
-          if (batch.live) lastPost.set(key, Date.now());
-          log(`✓ ${name} → ${item.platform}`);
-          if (batch.live && batch.deleteAfter) {
-            // The post is up either way, so a failed delete is a note, not a failed post
-            // (a failed item would be posted a second time on resume).
-            try {
-              await removeOnPage(ctx, item.platform, item.caption, (m) => log(`   [${item.platform}] ${m}`));
-              item.note = "posted, then deleted";
-              recordPost(item.platform, item.video, item.caption, "deleted");
-            } catch (e) {
-              item.note = `POSTED BUT NOT DELETED: ${(e as Error).message.split("\n")[0]}`;
-              log(`✖ ${name} → ${item.platform} — ${item.note}`);
-            }
-          }
+          await removeOnPage(ctx, item.platform, item.caption, (m) => log(`   [${item.platform}] ${m}`));
+          item.note = "posted, then deleted";
+          recordPost(item.platform, item.video, item.caption, "deleted", extra(item));
         } catch (e) {
-          const msg = (e as Error).message.split("\n")[0];
-          if (batch.live && clicked) {
-            // The publish button was pressed. It has probably gone out; a retry would post it twice.
-            item.status = "unconfirmed";
-            item.note = `UNCONFIRMED: ${msg}`;
-            lastPost.set(key, Date.now());
-            recordPost(item.platform, item.video, item.caption, `unconfirmed: ${msg}`);
-          } else {
-            item.status = "error";
-            item.note = msg;
-            recordPost(item.platform, item.video, item.caption, `error: ${item.note}`);
-          }
+          item.note = `POSTED BUT NOT DELETED: ${(e as Error).message.split("\n")[0]}`;
           log(`✖ ${name} → ${item.platform} — ${item.note}`);
         }
-        saveBatch(batch); onUpdate(batch);
-      });
+      }
+    } catch (e) {
+      const msg = (e as Error).message.split("\n")[0];
+      if (live && clicked) {
+        // The publish step ran. It has probably gone out; a retry would post it twice.
+        item.status = "unconfirmed";
+        item.note = `UNCONFIRMED: ${msg}`;
+        lastPost.set(key, Date.now());
+        recordPost(item.platform, item.video, item.caption, `unconfirmed: ${msg}`, extra(item));
+      } else {
+        item.status = "error";
+        item.note = msg;
+        recordPost(item.platform, item.video, item.caption, `error: ${item.note}`, extra(item));
+      }
+      log(`✖ ${name} → ${item.platform} — ${item.note}`);
     }
-  }, "about:blank", profile);
+    saveBatch(batch); onUpdate(batch);
+  };
 
-  const done = batch.items.filter((i) => i.status === "done").length;
-  const err = batch.items.filter((i) => i.status === "error").length;
-  const unsure = batch.items.filter((i) => i.status === "unconfirmed").length;
-  log(`Finished: ${done} done, ${err} error${err === 1 ? "" : "s"}${unsure ? `, ${unsure} unconfirmed` : ""} of ${batch.items.length}.`);
+  const official = todo.filter((i) => i.via === "official");
+  const browser = todo.filter((i) => i.via !== "official");
+  const seconds = new Map<string, number | undefined>();
+  for (const group of groupsOf(official)) {
+    if (!seconds.has(group.video)) seconds.set(group.video, durationOf(group.video));
+    await pool(group.items, PARALLEL_UPLOADS, (item) => runItem(item, (l, clicked) => postOfficial(batch.device ?? "mac", item.platform, {
+      file: item.video, caption: item.caption, title: item.title, identity: item.identity ?? "", test: !!batch.test, live: batch.live, song: item.song, duration: seconds.get(item.video),
+    }, l, clicked)));
+  }
+  if (browser.length) {
+    await withBrowser(async (ctx) => {
+      for (const group of groupsOf(browser)) await pool(group.items, PARALLEL_UPLOADS, (item) => runItem(item, (l, clicked) => postOnPage(ctx, item, browserLive, l, clicked), ctx));
+    }, "about:blank", profile);
+  }
+
+  const count = (s: ItemStatus) => batch.items.filter((i) => i.status === s).length;
+  log(`Finished: ${count("done")} done${count("draft") ? `, ${count("draft")} draft${count("draft") === 1 ? "" : "s"}` : ""}, ${count("error")} error${count("error") === 1 ? "" : "s"}${count("unconfirmed") ? `, ${count("unconfirmed")} unconfirmed` : ""} of ${batch.items.length}.`);
   return batch;
 }
