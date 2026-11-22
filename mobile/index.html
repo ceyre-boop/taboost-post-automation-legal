@@ -346,17 +346,18 @@ function renderPerCaptions(){
   if (!on) return;
   for (const id of selected){
     const p = platforms.find((x) => x.id === id); if (!p) continue;
-    if (caps[id] === undefined) caps[id] = $("caption").value;
     const wrap = document.createElement("div"); wrap.className = "pcap";
     wrap.innerHTML = `<label>${esc(p.label)}</label>${id === "youtube" ? `<input class="field" data-yt maxlength="100" placeholder="YouTube title (the first line if empty)" value="${esc(ytTitle)}">` : ""}<textarea data-cap="${id}" maxlength="5000"></textarea><div class="cnt" data-cnt="${id}"></div>`;
     box.appendChild(wrap);
-    const ta = wrap.querySelector("textarea"); ta.value = caps[id];
+    const ta = wrap.querySelector("textarea"); ta.value = caps[id] ?? $("caption").value; // follows the main caption until she edits this one
     const count = () => { const n = [...ta.value].length, lim = LIMITS[id] || 2200; const c = wrap.querySelector("[data-cnt]"); c.textContent = `${n} / ${lim}${id === "x" ? " (links count as 23)" : ""}`; c.className = "cnt" + (n > lim ? " over" : ""); };
-    ta.oninput = () => { caps[id] = ta.value; count(); }; count();
+    ta.oninput = (e) => { if (e.isTrusted) caps[id] = ta.value; count(); }; count();
     const yt = wrap.querySelector("[data-yt]"); if (yt) yt.oninput = () => { ytTitle = yt.value; };
   }
 }
 $("perplat").onchange = renderPerCaptions;
+/* A platform's box she hasn't touched keeps following the main caption. */
+function followMain(){ document.querySelectorAll("#percap textarea[data-cap]").forEach((ta) => { if (caps[ta.dataset.cap] === undefined) { ta.value = $("caption").value; ta.dispatchEvent(new Event("input")); delete caps[ta.dataset.cap]; } }); }
 
 /* ---- the song: credit lines, Instagram's own music, TikTok's note ---- */
 const credit = {};
@@ -460,7 +461,7 @@ async function loadStatus(){
   }catch(e){ $("accounts").innerHTML=""; banner("Couldn't reach the poster: "+e.message, "err"); }
 }
 
-$("caption").oninput = () => { $("cc").textContent = $("caption").value.length; };
+$("caption").oninput = () => { $("cc").textContent = $("caption").value.length; followMain(); };
 
 $("file").onchange = () => {
   const f = $("file").files[0], d = $("drop"), n = $("fname");
