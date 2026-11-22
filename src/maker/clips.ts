@@ -51,7 +51,7 @@ function saveIndex(set: string, clips: Clip[]): void {
 
 /* ---------------- reading an MP4 / QuickTime file ---------------- */
 
-export interface Probe { seconds: number; width: number; height: number; audio: boolean; codec: string; }
+export interface Probe { seconds: number; width: number; height: number; audio: boolean; codec: string; fragmented?: boolean; }
 
 /** Read the movie header (moov) from a file without loading the video data. */
 export function probeFile(path: string): Probe | null {
@@ -103,8 +103,12 @@ export function parseMoov(moov: Buffer, _ftyp = true): Probe | null {
   if (!mvhd) return null;
   const v1 = mvhd[0] === 1;
   const timescale = v1 ? mvhd.readUInt32BE(20) : mvhd.readUInt32BE(12);
-  const duration = v1 ? Number(mvhd.readBigUInt64BE(24)) : mvhd.readUInt32BE(16);
+  let duration = v1 ? Number(mvhd.readBigUInt64BE(24)) : mvhd.readUInt32BE(16);
   if (!timescale) return null;
+  // A fragmented MP4 (some screen recorders and streaming exports) keeps its length in mvex/mehd, if anywhere.
+  const mehd = !duration ? child(child(moov, "mvex") ?? Buffer.alloc(0), "mehd") : null;
+  if (mehd && mehd.length >= 8) duration = mehd[0] === 1 && mehd.length >= 12 ? Number(mehd.readBigUInt64BE(4)) : mehd.readUInt32BE(4);
+  const fragmented = !duration && !!child(moov, "mvex");
   let width = 0, height = 0, audio = false, codec = "";
   for (const t of boxes(moov)) {
     if (t.type !== "trak") continue;
@@ -125,7 +129,7 @@ export function parseMoov(moov: Buffer, _ftyp = true): Probe | null {
     if (stsd && stsd.length >= 16) codec = stsd.toString("latin1", 12, 16);
   }
   if (!width || !height) return null;
-  return { seconds: duration / timescale, width, height, audio, codec };
+  return { seconds: duration / timescale, width, height, audio, codec, ...(fragmented ? { fragmented: true } : {}) };
 }
 
 /** Codecs Chrome can't open. QuickTime's ProRes is the common one. */
@@ -145,18 +149,23 @@ export async function saveClip(set: string, req: IncomingMessage, fileName: stri
   try {
     await new Promise<void>((resolve, reject) => {
       const out = createWriteStream(tmp);
+      let ended = false;
+      const fail = (e: Error) => { out.destroy(); reject(e); };
       req.on("data", (c: Buffer) => {
         bytes += c.length;
-        if (bytes > CLIP_LIMITS.bytes) { req.destroy(); out.destroy(); reject(new BriefError("That clip is over 1 GB. Export a shorter or smaller copy.")); return; }
+        if (bytes > CLIP_LIMITS.bytes) { req.destroy(); fail(new BriefError("That clip is over 1 GB. Export a shorter or smaller copy.")); return; }
         if (!out.write(c)) { req.pause(); out.once("drain", () => req.resume()); }
       });
-      req.on("end", () => out.end(() => resolve()));
-      req.on("error", reject);
-      out.on("error", reject);
+      req.on("end", () => { ended = true; out.end(() => resolve()); });
+      req.on("error", (e) => fail(e));
+      // A browser that gives up halfway closes the request without ending it: close the file too, so its space comes back.
+      req.on("close", () => { if (!ended) fail(new BriefError("The upload stopped before it finished. Try again.")); });
+      out.on("error", (e) => fail(e));
     });
     const p = probeFile(tmp);
     if (!p) throw new BriefError("That file isn't a video the app can read. Use an MP4 or MOV, for example one exported from Photos or QuickTime.");
     if (PRORES.test(p.codec)) throw new BriefError("That clip is ProRes, which Chrome can't open. In QuickTime choose File > Export As > 1080p and add that copy.");
+    if (p.fragmented) throw new BriefError("That clip was saved in a streaming format that doesn't say how long it is. Open it in QuickTime, choose File > Export As > 1080p, and add that copy.");
     if (p.seconds < CLIP_LIMITS.seconds.min) throw new BriefError("That clip is under 2 seconds.");
     if (p.seconds > CLIP_LIMITS.seconds.max) throw new BriefError("That clip is over 10 minutes. Trim it first; a post uses at most 56 seconds of it.");
     const ext = /\.mov$/i.test(fileName) ? "mov" : /\.m4v$/i.test(fileName) ? "m4v" : "mp4";

@@ -28,7 +28,7 @@ export interface JobCard {
   /** "One number": the number. "clip": the captions and when each shows, in seconds from the card's start. */
   stat?: string; lines?: { text: string; from: number; to: number }[];
 }
-export interface ClipJob { name: string; start: number; end: number; width: number; height: number; audio: boolean; }
+export interface ClipJob { name: string; start: number; end: number; width: number; height: number; audio: boolean; bytes: number; }
 export interface RenderJob { format: Format; cards: JobCard[]; color: string; mood: string; business: string; logo: string; seed: number; clip?: ClipJob; }
 
 /** A stable number from the post's id, so a re-render looks the same. */
@@ -65,7 +65,7 @@ export function buildJob(p: MadePost, brief: ClientBrief, logo: string, clip?: C
     const len = Math.max(1, clip.end - clip.start);
     const lead = Math.min(2.5, len / 4), each = (len - lead) / Math.max(1, s.points.length);
     const lines = s.points.map((t, i) => ({ text: t, from: Math.round((lead + i * each) * 100) / 100, to: Math.round((lead + (i + 1) * each) * 100) / 100 }));
-    return { ...base, clip: { name: clip.name, start: clip.start, end: clip.end, width: clip.width, height: clip.height, audio: clip.audio },
+    return { ...base, clip: { name: clip.name, start: clip.start, end: clip.end, width: clip.width, height: clip.height, audio: clip.audio, bytes: clip.bytes },
       cards: [{ kind: "clip", text: s.hook, seconds: len, media: { type: "clip", name: clip.name, from: clip.start }, lines }, end] };
   }
 
@@ -83,7 +83,7 @@ export function buildJob(p: MadePost, brief: ClientBrief, logo: string, clip?: C
 }
 
 /** Open the render page in headless Chrome and wait for the video. */
-export async function renderVideo(baseUrl: string, set: string, id: string, key = ""): Promise<{ seconds: number; bytes: number }> {
+export async function renderVideo(baseUrl: string, set: string, id: string, key = ""): Promise<{ seconds: number; bytes: number; ownSound?: boolean }> {
   const profile = mkdtempSync(join(tmpdir(), "post-everywhere-render-"));
   const browser = await chromium.launchPersistentContext(profile, { executablePath: findChrome(), headless: true, args: ["--mute-audio", "--no-first-run"] });
   try {
@@ -91,7 +91,7 @@ export async function renderVideo(baseUrl: string, set: string, id: string, key 
     const url = `${baseUrl}/render?set=${encodeURIComponent(set)}&id=${encodeURIComponent(id)}${key ? `&rk=${encodeURIComponent(key)}` : ""}`;
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     const r = await Promise.race([
-      page.evaluate(() => (window as unknown as { renderPost: () => Promise<{ seconds: number; bytes: number }> }).renderPost()),
+      page.evaluate(() => (window as unknown as { renderPost: () => Promise<{ seconds: number; bytes: number; ownSound?: boolean }> }).renderPost()),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("rendering took longer than 8 minutes")), 480_000)),
     ]);
     return r;
@@ -113,7 +113,7 @@ export function startMake(set: string, idea: Idea, platforms: string[], baseUrl:
     if (!readBrief(set)) throw new AiError("Fill in your business details first.", true);
     if (clip.note.trim().length < 3) throw new AiError("Say in a few words what the clip shows first. The title and captions are written from it.", true);
   } else {
-    const missing = notReady(set);
+    const missing = notReady(set, listClips(set).length);
     if (missing) throw new AiError(missing, true);
   }
   const brief = readBrief(set)!;
@@ -135,6 +135,7 @@ export function startMake(set: string, idea: Idea, platforms: string[], baseUrl:
       const fresh = readMade(set, p.id) ?? p;
       if (!videoBytes(set, p.id)) throw new Error("the video wasn't saved");
       fresh.seconds = Math.round(r.seconds * 10) / 10;
+      if (clip?.audio && !r.ownSound) fresh.problem = "The clip's own sound couldn't be added, so this has music only. Watch it before posting.";
       fresh.status = "ready";
       saveMade(fresh);
     } catch (e) {

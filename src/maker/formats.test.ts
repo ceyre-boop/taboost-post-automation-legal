@@ -156,7 +156,7 @@ test("a clip post is one card for the whole clip with captions taking turns, the
   assert.equal(lines.length, 3);
   assert.ok(lines[0].from > 0 && lines.every((l, i) => l.to > l.from && (i === 0 || l.from === lines[i - 1].to)));
   assert.equal(lines.at(-1)!.to, 24);
-  assert.deepEqual(job.clip, { name: c.name, start: 2, end: 26, width: 1280, height: 800, audio: false });
+  assert.deepEqual(job.clip, { name: c.name, start: 2, end: 26, width: 1280, height: 800, audio: false, bytes: c.bytes });
 });
 
 test("a 'One number' post opens on the number; photo posts mix stretches of clips in behind the photos", async () => {
@@ -252,4 +252,74 @@ test("a week is planned from the person's unused clips first, then ideas in as m
   assert.equal(ideas[0].clip, c.name);
   assert.equal(new Set(ideas.map((i) => i.format)).size, 4); // four different looks
   assert.ok(!ideas.some((i) => i.title === "Another quick tip about roofs"));
+});
+
+/* ---------------- what the review found, pinned ---------------- */
+
+const readyPost = (set: string, title: string, withCaps = true) => {
+  const m = store.newMade(set, { title, angle: "", fact: 0 }, PL);
+  m.status = "ready"; m.script = s({}); if (withCaps) m.captions = caps(); store.saveMade(m);
+  mkdirSync(store.madeDir(set, m.id), { recursive: true }); writeFileSync(store.videoPath(set, m.id), Buffer.alloc(2000));
+  return m;
+};
+const noPost = { batchRunning: () => false, startPost: () => { throw new Error("must not post"); } };
+
+test("a post with no caption for the plan's accounts doesn't hold up the others: it's marked and the next one goes", async () => {
+  const set = "capset";
+  const a = readyPost(set, "No captions here", false), b = readyPost(set, "Has captions");
+  const due = at(2026, 11, 24, 12);
+  plan.savePlan(set, { every: false, perWeek: 3, platforms: ["tiktok", "x"], plannedAt: "", slots: [
+    { at: new Date(due).toISOString(), idea: a.idea, madeId: a.id, approved: true },
+    { at: new Date(due).toISOString(), idea: b.idea, madeId: b.id, approved: true },
+  ] });
+  const posted: string[] = [];
+  plan.setPlanClock(() => due + 60_000);
+  assert.equal(await routes.planTick(set, 0, { batchRunning: () => false, startPost: (v: string) => { posted.push(v); return "b"; } } as never), "posting");
+  assert.deepEqual(posted, [store.videoPath(set, b.id)]);
+  const p = plan.readPlan(set);
+  assert.equal(p.slots[0].approved, false);
+  assert.match(p.slots[0].problem!, /no caption for the accounts/);
+});
+
+test("days that have gone by aren't made; a failed automatic re-plan waits a day instead of trying every minute", async () => {
+  const set = "pastset";
+  brief.saveBrief(set, B);
+  for (let i = 0; i < 3; i++) brief.savePhoto(set, Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...Array(100).fill(i)]));
+  const long = at(2026, 11, 10, 12);
+  plan.savePlan(set, { every: true, perWeek: 3, platforms: ["tiktok"], plannedAt: new Date(at(2026, 11, 9)).toISOString(), slots: [{ at: new Date(long).toISOString(), idea: { title: "Old idea", angle: "", fact: 0 }, madeId: "", approved: false }] });
+  let calls = 0;
+  ai.setThinker(async () => { calls++; throw new ai.AiError("The AI is down.", false); });
+  plan.setPlanClock(() => at(2026, 11, 24, 9));
+  assert.equal(await routes.planTick(set, 0, noPost as never), "plan failed");   // not "making" the old day
+  assert.equal(await routes.planTick(set, 0, noPost as never), "idle");          // and not trying again a minute later
+  assert.equal(calls, 1);
+  assert.equal(plan.readPlan(set).slots[0].madeId, "");
+});
+
+test("a new week keeps approved posts still to come, and throws away only what wasn't approved", () => {
+  const set = "keepset";
+  const keep = readyPost(set, "Approved and coming"), drop = readyPost(set, "Never approved");
+  const now = at(2026, 11, 24, 9);
+  plan.setPlanClock(() => now);
+  plan.savePlan(set, { every: false, perWeek: 3, platforms: ["tiktok"], plannedAt: "", slots: [
+    { at: new Date(now + 3 * 3600_000).toISOString(), idea: keep.idea, madeId: keep.id, approved: true },
+    { at: new Date(now + 5 * 3600_000).toISOString(), idea: drop.idea, madeId: drop.id, approved: false },
+  ] });
+  const p = routes.replacePlan(set, [{ title: "New one", angle: "", fact: 0, format: "tips" }], { perWeek: 3, platforms: ["tiktok"], every: false });
+  assert.deepEqual(p.slots.map((x) => x.idea.title), ["Approved and coming", "New one"]);
+  assert.equal(p.slots[0].approved, true);
+  assert.equal(store.readMade(set, keep.id)!.status, "ready");
+  assert.equal(store.readMade(set, drop.id)!.status, "discarded");
+});
+
+test("a clip upload that stops halfway is refused and leaves nothing behind; a fragmented MP4 says how to fix it", async () => {
+  const half = new PassThrough() as PassThrough & { headers: Record<string, string> };
+  half.headers = { "content-length": "999999" };
+  half.write(Buffer.alloc(5000));
+  const p = clips.saveClip("abortset", half as never, "half.mp4");
+  setTimeout(() => half.destroy(), 20);
+  assert.match(await plainOf(p), /stopped before it finished/);
+  assert.deepEqual((await import("node:fs")).readdirSync(clips.clipsDir("abortset")).filter((f) => f.startsWith(".upload")), []);
+  const frag = Buffer.concat([box("ftyp", Buffer.from("iso5\0\0\0\0iso5", "latin1")), box("moov", mvhd(600, 0), box("trak", tkhd(1280, 720), box("mdia", hdlr("vide"))), box("mvex", box("trex", Buffer.alloc(24))))]);
+  assert.match(await plainOf(clips.saveClip("", upload(frag), "stream.mp4")), /streaming format/);
 });

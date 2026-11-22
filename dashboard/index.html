@@ -889,8 +889,9 @@
   const labelOf = (id) => (state.app.platforms.find((p) => p.id === id)?.label || id).replace(/\s*\(.*\)$/, '');
   const lines = (v) => v.split('\n').map((s) => s.trim()).filter(Boolean);
 
-  async function loadMaker() {
+  async function loadMaker(force = false) {
     try { mk.s = await api('/api/maker'); } catch (e) { toast(e.message); return; }
+    if (force) for (const k of Object.keys(sig)) delete sig[k];
     renderMaker();
     clearTimeout(mk.timer);
     const busy = mk.s.made.some((m) => ['writing', 'rendering', 'posting'].includes(m.status));
@@ -958,8 +959,9 @@
     const s = m.script;
     const caps = (m.status === 'ready' || m.status === 'posted' || m.status === 'failed') && Object.keys(m.captions).length
       ? `<details class="capbox"><summary>Captions for ${plural(m.platforms.filter((p) => m.captions[p]).length, 'account')}: read or change them</summary><div class="caps">${m.platforms.filter((p) => m.captions[p]).map((p) => { const c = m.captions[p], lim = mk.s.limits.captions[p] || 2200, n = capCount(p, c); return `<div class="cap" data-cap="${esc(m.id)}|${esc(p)}"><div class="row">${badge(p, true)}<b>${esc(labelOf(p))}</b><span class="count ${n > lim ? 'over' : ''}">${n} / ${lim}</span></div>${p === 'youtube' ? '<span class="small muted">The first line is the video\'s title.</span>' : ''}<textarea class="inp" rows="3" aria-label="${esc(labelOf(p))} caption" maxlength="${lim}">${esc(c.caption)}</textarea><input class="inp" aria-label="${esc(labelOf(p))} hashtags" value="${esc(c.hashtags.join(' '))}" placeholder="#hashtags"></div>`; }).join('')}</div></details>` : '';
+    const past = m.planAt && new Date(m.planAt) < new Date();
     const planned = m.planAt && m.status === 'ready'
-      ? (m.approved ? `<button class="btn" data-plan-approve="${esc(m.id)}" data-v="0">Undo approval</button>` : `<button class="btn primary" data-plan-approve="${esc(m.id)}" data-v="1">Approve for ${esc(when(m.planAt).day)}</button>`) : '';
+      ? (m.approved ? `<button class="btn" data-plan-approve="${esc(m.id)}" data-v="0">Undo approval</button>` : `<button class="btn primary" data-plan-approve="${esc(m.id)}" data-v="1">${past ? 'Approve and post now' : `Approve for ${esc(when(m.planAt).day)}`}</button>`) : '';
     const acts = m.status === 'ready' || m.status === 'failed' && m.video
       ? `<div class="row">${planned}<button class="btn" data-mk-preview="${esc(m.id)}">Preview</button><button class="btn ${planned ? '' : 'primary'}" data-mk-post="${esc(m.id)}">Post now</button><button class="btn quiet" data-mk-discard="${esc(m.id)}">Throw away</button></div>`
       : m.status === 'posted' || m.status === 'failed' ? `<div class="row"><button class="btn quiet" data-mk-discard="${esc(m.id)}">Remove from this list</button></div>` : '';
@@ -1009,7 +1011,7 @@
       const w = when(x.at);
       const acts = [
         x.madeId && ['ready', 'approved', 'missed', 'failed', 'posted'].includes(x.state) ? `<button class="btn sm" data-plan-watch="${esc(x.madeId)}">Watch</button>` : '',
-        x.state === 'ready' ? `<button class="btn sm primary" data-plan-approve="${esc(x.madeId)}" data-v="1">Approve</button>` : '',
+        x.state === 'ready' ? `<button class="btn sm primary" data-plan-approve="${esc(x.madeId)}" data-v="1">${new Date(x.at) < new Date() ? 'Approve and post now' : 'Approve'}</button>` : '',
         x.state === 'approved' ? `<button class="btn sm" data-plan-approve="${esc(x.madeId)}" data-v="0">Undo</button>` : '',
         x.state === 'missed' ? `<button class="btn sm primary" data-plan-approve="${esc(x.madeId)}" data-v="1">Post it now</button>` : '',
         ['waiting', 'ready', 'failed', 'tossed', 'missed'].includes(x.state) && !(x.state === 'waiting' && !x.problem && p.platforms.length) ? `<button class="btn sm quiet" data-plan-replace="${x.index}">Another idea</button>` : '',
@@ -1031,7 +1033,24 @@
       </div></div>`).join('');
   }
 
-  function renderMaker() { if (!mk.s) return; renderAi(); renderPlan(); renderBrief(); renderMkClips(); renderIdeas(); renderMade(); renderAuto(); }
+  /** Redraw a section only when what it shows has changed, and never while the person is typing
+   *  in it or playing one of its videos: the page refreshes itself every few seconds while posts are made. */
+  const sig = {};
+  function fresh(key, el, value) {
+    const v = JSON.stringify(value);
+    if (sig[key] === v) return false;
+    const busy = el.contains(document.activeElement) && document.activeElement !== document.body || [...el.querySelectorAll('video')].some((x) => !x.paused);
+    if (busy && sig[key] !== undefined) return false;
+    sig[key] = v; return true;
+  }
+  function renderMaker() {
+    if (!mk.s) return;
+    renderAi(); renderPlan(); renderBrief();
+    if (fresh('clips', $('#mk-clips'), [mk.s.clips, mk.s.making, mk.s.ai.ready, !!mk.s.brief])) renderMkClips();
+    renderIdeas();
+    if (fresh('made', $('#mk-made'), mk.s.made)) renderMade(); else { const ready = mk.s.made.filter((m) => m.status === 'ready').length; $('#nav-made').hidden = !ready; $('#nav-made').textContent = ready; }
+    renderAuto();
+  }
 
   $('#v-make').addEventListener('submit', async (e) => {
     if (e.target.id === 'mk-key') {
@@ -1061,7 +1080,7 @@
     for (const f of files) {
       if (!/\.(mp4|mov|m4v)$/i.test(f.name) && !/^video\//.test(f.type)) { toast(`${f.name}: use an MP4 or MOV video.`); continue; }
       const btn = $('#mk-add-clip'); btn.disabled = true; btn.textContent = `Adding ${f.name}…`;
-      try { const r = await api(`/api/maker/clip?name=${encodeURIComponent(f.name)}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: f }); mk.s.clips = r.clips; mk.s.problem = r.problem; renderMkClips(); renderPlan(); renderIdeas(); toast(`Added. Now say what it shows, then press Finish this clip.`); }
+      try { const r = await api(`/api/maker/clip?name=${encodeURIComponent(f.name)}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: f }); mk.s.clips = r.clips; mk.s.problem = r.problem; delete sig.clips; renderMkClips(); renderPlan(); renderIdeas(); toast(`Added. Now say what it shows, then press Finish this clip.`); }
       catch (e) { toast(`${f.name}: ${e.message}`); }
       btn.disabled = false; btn.textContent = '+ Add a clip (MP4 or MOV, up to 1 GB). Or drop it here.';
     }
@@ -1101,7 +1120,7 @@
       const platforms = $$('input[name="mkp"]:checked').map((i) => i.value);
       if (!platforms.length) return toast('Choose at least one account to write captions for.');
       mkb.disabled = true;
-      try { await post('/api/maker/make', { idea, platforms }); toast('Making it now. It takes about a minute.'); await loadMaker(); $('#mk-made').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) { toast(err.message); mkb.disabled = false; }
+      try { await post('/api/maker/make', { idea, platforms }); toast('Making it now. It takes about a minute.'); await loadMaker(true); $('#mk-made').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) { toast(err.message); mkb.disabled = false; }
       return;
     }
     if (t.closest('#mk-plan-make')) {
@@ -1110,18 +1129,18 @@
       mk.planning = true; renderPlan();
       try { const r = await post('/api/maker/plan/make', { perWeek: Number($('#mk-plan-n').value), platforms, every: $('#mk-plan-every').checked }); mk.s.plan = r.plan; toast('Planned. Each post is made in turn and shows up in Made for you.'); }
       catch (err) { toast(err.message); }
-      mk.planning = false; await loadMaker(); return;
+      mk.planning = false; await loadMaker(true); return;
     }
     const ap = t.closest('[data-plan-approve]');
     if (ap) {
-      try { const r = await post('/api/maker/plan/approve', { madeId: ap.dataset.planApprove, approved: ap.dataset.v === '1' }); mk.s.plan = r.plan; const x = r.plan.slots.find((y) => y.madeId === ap.dataset.planApprove); toast(ap.dataset.v === '1' ? `Approved. It posts ${when(x.at).day} at ${when(x.at).time} while the app is open.` : 'Not approved. It waits for you.'); await loadMaker(); }
+      try { const r = await post('/api/maker/plan/approve', { madeId: ap.dataset.planApprove, approved: ap.dataset.v === '1' }); mk.s.plan = r.plan; const x = r.plan.slots.find((y) => y.madeId === ap.dataset.planApprove); toast(ap.dataset.v === '1' ? `Approved. It posts ${when(x.at).day} at ${when(x.at).time} while the app is open.` : 'Not approved. It waits for you.'); await loadMaker(true); }
       catch (err) { toast(err.message); }
       return;
     }
     const rp = t.closest('[data-plan-replace]');
     if (rp) {
       rp.disabled = true; rp.textContent = 'Thinking…';
-      try { const r = await post('/api/maker/plan/replace', { index: Number(rp.dataset.planReplace) }); mk.s.plan = r.plan; await loadMaker(); }
+      try { const r = await post('/api/maker/plan/replace', { index: Number(rp.dataset.planReplace) }); mk.s.plan = r.plan; await loadMaker(true); }
       catch (err) { toast(err.message); rp.disabled = false; rp.textContent = 'Another idea'; }
       return;
     }
@@ -1138,12 +1157,12 @@
       try {
         await saveClipBox(box);
         await post('/api/maker/clip/finish', { name: fin.dataset.clipFinish, platforms });
-        toast('Finishing it now. A longer clip takes a minute or two.'); await loadMaker(); $('#mk-made').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        toast('Finishing it now. A longer clip takes a minute or two.'); await loadMaker(true); $('#mk-made').scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (err) { toast(err.message); fin.disabled = false; }
       return;
     }
     const crm = t.closest('[data-clip-remove]');
-    if (crm) { try { const r = await post('/api/maker/clip/remove', { name: crm.dataset.clipRemove }); mk.s.clips = r.clips; mk.s.problem = r.problem; renderMkClips(); renderPlan(); renderIdeas(); } catch (err) { toast(err.message); } return; }
+    if (crm) { try { const r = await post('/api/maker/clip/remove', { name: crm.dataset.clipRemove }); mk.s.clips = r.clips; mk.s.problem = r.problem; delete sig.clips; renderMkClips(); renderPlan(); renderIdeas(); } catch (err) { toast(err.message); } return; }
     const pv = t.closest('[data-mk-preview]'), pn = t.closest('[data-mk-post]'), dc = t.closest('[data-mk-discard]');
     if (pv || pn) {
       const m = mk.s.made.find((x) => x.id === (pv || pn).dataset[pv ? 'mkPreview' : 'mkPost']);
@@ -1157,7 +1176,7 @@
       $('#mk-cf-list').innerHTML = ids.map((id) => `<li>${esc(labelOf(id))}</li>`).join('');
       return $('#mk-confirm').showModal();
     }
-    if (dc) { try { await post(`/api/maker/made/${dc.dataset.mkDiscard}/discard`); await loadMaker(); toast('Thrown away. That idea won\'t be suggested again.'); } catch (err) { toast(err.message); } }
+    if (dc) { try { await post(`/api/maker/made/${dc.dataset.mkDiscard}/discard`); await loadMaker(true); toast('Thrown away. That idea won\'t be suggested again.'); } catch (err) { toast(err.message); } }
   });
   async function postMade(m, ids, live) {
     try { const r = await post(`/api/maker/made/${m.id}/post`, { platforms: ids, live }); state.batchId = r.batchId; state.batch = null; go('progress'); pollBatch(); }

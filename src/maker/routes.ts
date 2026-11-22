@@ -157,6 +157,25 @@ const cleanIdea = (v: unknown): Idea | null => {
 
 const cleanPlatforms = (v: unknown, allowed: string[]): string[] => (Array.isArray(v) ? [...new Set(v.map(String).filter((p) => allowed.includes(p)))] : []);
 
+/** Start a new week. The old week's posts that weren't approved are thrown away; approved
+ *  ones still to come keep their day and stay approved. Called only once the new ideas are in hand. */
+export function replacePlan(set: string, ideas: Idea[], settings: { perWeek: number; platforms: string[]; every: boolean }): WeekPlan {
+  const old = readPlan(set);
+  const now = planNow();
+  const kept = old.slots.filter((s) => {
+    const mp = s.madeId ? readMade(set, s.madeId) : null;
+    return s.approved && mp?.status === "ready" && Date.parse(s.at) + MISSED_AFTER_MS > now;
+  });
+  for (const s of old.slots) {
+    if (kept.includes(s)) continue;
+    const mp = s.madeId ? readMade(set, s.madeId) : null;
+    if (mp && (mp.status === "ready" || mp.status === "failed") && !mp.batchId) discardMade(set, mp.id);
+  }
+  const p = newPlan(set, ideas, settings);
+  if (kept.length) { p.slots = [...p.slots, ...kept].sort((a, b) => a.at.localeCompare(b.at)); savePlan(set, p); }
+  return p;
+}
+
 /** Choose a week's posts: unused clips (that say what they show) first, then ideas in varied formats. */
 export async function planIdeas(set: string, n: number): Promise<Idea[]> {
   const brief = readBrief(set);
@@ -430,14 +449,9 @@ export async function makerRoute(req: IncomingMessage, res: ServerResponse, url:
       const platforms = b.platforms !== undefined ? cleanPlatforms(b.platforms, ctx.platforms.map((x) => x.id)) : old.platforms;
       if (!platforms.length) { ctx.json(400, { error: "Choose at least one account for the week's posts." }); return true; }
       const perWeek = Math.min(PLAN_PER_WEEK.max, Math.max(PLAN_PER_WEEK.min, Math.round(Number(b.perWeek ?? old.perWeek) || PLAN_PER_WEEK.default)));
-      // Posts from the old plan that aren't approved or out yet are thrown away, so the queue holds this week only.
-      for (const s of old.slots) {
-        const mp = s.madeId ? readMade(set, s.madeId) : null;
-        if (mp && !s.approved && (mp.status === "ready" || mp.status === "failed")) discardMade(set, mp.id);
-      }
       const ideas = await planIdeas(set, perWeek);
       if (!ideas.length) { ctx.json(400, { error: "There's nothing to plan from yet. Add photos, or a clip that says what it shows." }); return true; }
-      newPlan(set, ideas, { perWeek, platforms, every: b.every !== undefined ? b.every === true : old.every });
+      replacePlan(set, ideas, { perWeek, platforms, every: b.every !== undefined ? b.every === true : old.every });
       ctx.json(200, { plan: planView(set) });
       return true;
     }
@@ -470,15 +484,23 @@ export async function makerRoute(req: IncomingMessage, res: ServerResponse, url:
       const brief = readBrief(set);
       const missing = missingFor(set);
       if (!brief || missing) { ctx.json(400, { error: missing || "Fill in your business details first." }); return true; }
-      if (mp) discardMade(set, mp.id);
-      const taken = new Set([...p.slots.map((s) => s.idea.title), ...usedTitles(set)]);
+      const taken = new Set([...p.slots.map((s) => s.idea.title), ...usedTitles(set), ...(mp ? [mp.idea.title] : [])]);
       let pool = readIdeas(set).filter((x) => !taken.has(x.title));
       if (!pool.length) { pool = (await suggestIdeas(brief, [...taken], 4)).filter((x) => !taken.has(x.title)); }
       const next = pool.find((x) => x.format !== slot.idea.format) ?? pool[0];
       if (!next) { ctx.json(400, { error: "No fresh idea came up. Add a fact or two and try again." }); return true; }
       saveIdeas(set, pool.filter((x) => x !== next));
-      p.slots[i] = { at: slot.at, idea: next, madeId: "", approved: false };
-      savePlan(set, p);
+      // The plan may have changed while the AI was thinking (an approval undone, a post made):
+      // read it again and change this one day only, if it's still the same day.
+      const now = readPlan(set);
+      const same = now.slots[i];
+      if (!same || same.at !== slot.at || same.idea.title !== slot.idea.title) { ctx.json(409, { error: "The plan changed while that was thinking. Try again." }); return true; }
+      const was = same.madeId ? readMade(set, same.madeId) : null;
+      if (was && (was.status === "posting" || was.status === "posted")) { ctx.json(409, { error: "That one has already gone out." }); return true; }
+      if (was && (was.status === "writing" || was.status === "rendering")) { ctx.json(409, { error: "That one is being made right now." }); return true; }
+      if (was) discardMade(set, was.id);
+      now.slots[i] = { at: slot.at, idea: next, madeId: "", approved: false };
+      savePlan(set, now);
       ctx.json(200, { plan: planView(set) });
       return true;
     }
@@ -552,7 +574,12 @@ export async function planTick(set: string, port: number, ctx: Pick<MakerContext
     if (!slotDue(slot, mp, now) || !mp) continue;
     if (ctx.batchRunning()) return "waiting for posts to finish";
     const platforms = p.platforms.filter((pl) => mp.captions?.[pl]);
-    if (!platforms.length) return "no captions";
+    if (!platforms.length) {
+      slot.approved = false;
+      slot.problem = "It has no caption for the accounts the plan posts to now, so it didn't go out. Press Another idea, or post it yourself from Made for you.";
+      savePlan(set, p);
+      continue;
+    }
     const captions = Object.fromEntries(platforms.map((pl) => [pl, fullCaption(mp.captions![pl])]));
     mp.batchId = ctx.startPost(videoPath(set, mp.id), captions, platforms, true, false);
     mp.status = "posting";
@@ -561,7 +588,7 @@ export async function planTick(set: string, port: number, ctx: Pick<MakerContext
     return "posting";
   }
   if (!isMaking() && p.platforms.length) {
-    const i = p.slots.findIndex((s) => !s.madeId && !s.problem);
+    const i = p.slots.findIndex((s) => !s.madeId && !s.problem && Date.parse(s.at) + MISSED_AFTER_MS > now);
     if (i >= 0) {
       try {
         const made = startMake(set, p.slots[i].idea, p.platforms, `http://127.0.0.1:${port}`, (id) => newRenderKey(set, id), false);
@@ -575,10 +602,15 @@ export async function planTick(set: string, port: number, ctx: Pick<MakerContext
   }
   if (p.every && p.platforms.length && planOver(p, now) && !planning && (!p.plannedAt || now - Date.parse(p.plannedAt) > 20 * 60 * 60 * 1000)) {
     planning = true;
+    savePlan(set, { ...p, plannedAt: new Date(now).toISOString() }); // a failed try waits a day, not a minute
     try {
       const ideas = await planIdeas(set, p.perWeek);
-      if (ideas.length) newPlan(set, ideas, { perWeek: p.perWeek, platforms: p.platforms, every: true });
+      if (!ideas.length) return "nothing to plan";
+      replacePlan(set, ideas, { perWeek: p.perWeek, platforms: p.platforms, every: true });
       return "planned";
+    } catch (e) {
+      console.error("[plan] the next week couldn't be planned:", String((e as Error).message ?? e).split("\n")[0]);
+      return "plan failed";
     } finally { planning = false; }
   }
   return "idle";

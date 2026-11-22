@@ -310,9 +310,10 @@ function drawClipCard(ctx, card, local, video, color) {
   if (aspect > 0.9) {
     // Wide or square: the clip across the middle, the title above it, captions below it.
     drawBlurred(ctx, video);
-    const cw = W, ch = Math.min(1000, W / aspect), y0 = aspect > 1.2 ? 545 : 470;
+    const y0 = aspect > 1.2 ? 545 : 470;
+    const ch = Math.min(W / aspect, H - SAFE.bottom - 190 - y0), cw = ch * aspect, x0 = (W - cw) / 2;
     ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 40;
-    ctx.drawImage(video, 0, y0, cw, ch); ctx.restore();
+    ctx.drawImage(video, x0, y0, cw, ch); ctx.restore();
     const d = ease(local / 0.45);
     const { size, lines } = fit(ctx, card.text, 900, 92, 58, W - SAFE.left * 2, 3);
     const lh = size * 1.12, band = [SAFE.top - 40, y0 - 20], top = (band[0] + band[1]) / 2 - (lines.length * lh) / 2;
@@ -321,7 +322,7 @@ function drawClipCard(ctx, card, local, video, color) {
     lines.forEach((l, k) => ctx.fillText(l, W / 2, top + k * lh + (1 - d) * 20));
     ctx.shadowBlur = 0; ctx.fillStyle = color; const bw = 160 * d; roundRect(ctx, W / 2 - bw / 2, y0 - 34, bw, 10, 5); ctx.fill();
     ctx.textAlign = 'left'; ctx.globalAlpha = 1;
-    const capY = Math.min(H - SAFE.bottom - 70, y0 + ch + 120);
+    const capY = Math.min(H - SAFE.bottom - 70, y0 + ch + 110);
     for (const line of card.lines || []) drawCaption(ctx, line, local, capY, maxW);
     return;
   }
@@ -392,6 +393,7 @@ async function makeMusic(seconds, mood, seed) {
 
 /** The clip's own sound at full level with the music quietly under it. Null if it can't be read. */
 async function withClipSound(music, clip, seconds) {
+  if ((clip.bytes || 0) > 300 * 1024 * 1024) return null;   // too big to read into this page; the app tells the person
   try {
     const r = await fetch(q(`/api/maker/clip/${encodeURIComponent(clip.name)}`));
     if (!r.ok) return null;
@@ -470,7 +472,8 @@ window.renderPost = async () => {
   /** Put every clip on screen at time t in the right place before drawing. */
   const ready = async (i, local) => {
     const c = job.cards[i], v = videos.get(i);
-    if (v && c.media) await seek(v, (c.media.from || 0) + local);
+    // Half a frame in: a seek to a frame's exact edge can land on the frame before it.
+    if (v && c.media) await seek(v, (c.media.from || 0) + local + 0.5 / FPS);
   };
   const drawCard = (g, i, local) => {
     const c = job.cards[i];
