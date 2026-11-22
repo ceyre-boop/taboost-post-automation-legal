@@ -62,6 +62,16 @@ export function chromeProfileOn(port: number): string | null {
   return null;
 }
 
+/** Is a Chrome running on exactly this profile folder (with or without a debugging port)? */
+export function profileInUse(dir: string): boolean {
+  if (platform() === "win32") return false;
+  try {
+    const out = spawnSync("pgrep", ["-fl", "--", `--user-data-dir=${dir}`], { encoding: "utf8" }).stdout;
+    // pgrep matches any command line containing the text; keep only this exact folder.
+    return out.split("\n").some((l) => { const m = l.match(/--user-data-dir=(.+?)(?= --|$)/); return !!m && m[1].trim() === dir && !/--type=/.test(l); });
+  } catch { return false; }
+}
+
 export function findChrome(): string {
   const found = chromeCandidates().find((p) => existsSync(p));
   if (!found) {
@@ -70,7 +80,7 @@ export function findChrome(): string {
   return found;
 }
 
-async function cdpAlive(port: number): Promise<boolean> {
+export async function cdpAlive(port: number): Promise<boolean> {
   try {
     const r = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(800) });
     return r.ok;
@@ -93,6 +103,10 @@ export async function launchChrome(startUrl: string, profile: Profile = defaultP
     throw new Error(`Another Chrome window (not this set of accounts) is using port ${port}. Quit the app's other Chrome windows and try again.`);
   }
   const bin = findChrome();
+  // A Chrome on this profile with no debugging port is the plain sign-in window (src/signin.ts),
+  // or one still closing. Opening a second one would only hand the address to it.
+  for (let i = 0; i < 25 && profileInUse(dir); i++) await sleep(200);
+  if (profileInUse(dir)) throw new Error("The sign-in window for this set is still open. Finish signing in, then close that Chrome window (or press Done in Accounts), and try again.");
   const child = spawn(
     bin,
     [

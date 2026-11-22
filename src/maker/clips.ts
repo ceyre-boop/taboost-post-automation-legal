@@ -9,8 +9,12 @@ import { closeSync, createWriteStream, existsSync, fstatSync, mkdirSync, openSyn
 import type { IncomingMessage } from "node:http";
 import { join } from "node:path";
 import { BriefError, makerDir } from "./brief.ts";
+import { checkSpace, SANITY_MAX_BYTES, UploadError } from "../multipart.ts";
 
-export const CLIP_LIMITS = { count: 20, bytes: 1024 * 1024 * 1024, seconds: { min: 2, max: 600 }, use: 56, note: 200 };
+// No size limit of the app's own: a phone's 3 GB clip is fine (the disk is checked instead).
+// A post uses at most 56 seconds of a clip, wherever in it, so an hour-long one is fine too.
+export const CLIP_LIMITS = { count: 20, bytes: SANITY_MAX_BYTES, seconds: { min: 2, max: 3600 }, use: 56, note: 200 };
+const TOO_BIG = "That clip is bigger than any platform takes. Export a smaller copy.";
 
 export interface Clip {
   name: string;
@@ -142,8 +146,9 @@ export async function saveClip(set: string, req: IncomingMessage, fileName: stri
   const have = listClips(set);
   if (have.length >= CLIP_LIMITS.count) throw new BriefError(`That's the most clips the maker keeps (${CLIP_LIMITS.count}). Remove one first.`);
   const declared = Number(req.headers["content-length"] ?? 0);
-  if (declared > CLIP_LIMITS.bytes) throw new BriefError("That clip is over 1 GB. Export a shorter or smaller copy.");
+  if (declared > CLIP_LIMITS.bytes) throw new BriefError(TOO_BIG);
   mkdirSync(clipsDir(set), { recursive: true });
+  try { checkSpace(clipsDir(set), declared); } catch (e) { throw new BriefError((e as UploadError).message); }
   const tmp = join(clipsDir(set), `.upload-${randomBytes(6).toString("hex")}`);
   let bytes = 0;
   try {
@@ -153,7 +158,7 @@ export async function saveClip(set: string, req: IncomingMessage, fileName: stri
       const fail = (e: Error) => { out.destroy(); reject(e); };
       req.on("data", (c: Buffer) => {
         bytes += c.length;
-        if (bytes > CLIP_LIMITS.bytes) { req.destroy(); fail(new BriefError("That clip is over 1 GB. Export a shorter or smaller copy.")); return; }
+        if (bytes > CLIP_LIMITS.bytes) { req.destroy(); fail(new BriefError(TOO_BIG)); return; }
         if (!out.write(c)) { req.pause(); out.once("drain", () => req.resume()); }
       });
       req.on("end", () => { ended = true; out.end(() => resolve()); });
@@ -167,7 +172,7 @@ export async function saveClip(set: string, req: IncomingMessage, fileName: stri
     if (PRORES.test(p.codec)) throw new BriefError("That clip is ProRes, which Chrome can't open. In QuickTime choose File > Export As > 1080p and add that copy.");
     if (p.fragmented) throw new BriefError("That clip was saved in a streaming format that doesn't say how long it is. Open it in QuickTime, choose File > Export As > 1080p, and add that copy.");
     if (p.seconds < CLIP_LIMITS.seconds.min) throw new BriefError("That clip is under 2 seconds.");
-    if (p.seconds > CLIP_LIMITS.seconds.max) throw new BriefError("That clip is over 10 minutes. Trim it first; a post uses at most 56 seconds of it.");
+    if (p.seconds > CLIP_LIMITS.seconds.max) throw new BriefError("That clip is over an hour. Trim it first; a post uses at most 56 seconds of it.");
     const ext = /\.mov$/i.test(fileName) ? "mov" : /\.m4v$/i.test(fileName) ? "m4v" : "mp4";
     const name = `c-${randomBytes(6).toString("hex")}.${ext}`;
     renameSync(tmp, clipPath(set, name));

@@ -1,5 +1,6 @@
 import type { Page } from "playwright-core";
-import type { Platform, PostInput } from "./types.ts";
+import type { Platform, PostInput, SongChoice } from "./types.ts";
+import { pickSong, tiktokResult } from "./song.ts";
 import { uploadTimeoutMs, neverClickable } from "./timing.ts";
 import { typeCaption } from "./caption.ts";
 import { needle, clickNamed, waitGone, postBlock } from "./remove.ts";
@@ -21,12 +22,60 @@ async function dismissModals(page: Page, log: (m: string) => void): Promise<void
   }
 }
 
+/**
+ * Add a song from TikTok's own library in TikTok Studio's editor (the upload page's Sounds
+ * button), optionally muted (the song's lane speaker: volume "-∞ dB"), and save the edit.
+ * TikTok then shows the song on the post. Returns what happened in plain words; a song that
+ * can't be found or added never stops the post: the editor is left without changes.
+ */
+async function addSong(page: Page, song: SongChoice, log: (m: string) => void): Promise<string> {
+  const what = `"${song.title}"${song.artist ? ` by ${song.artist}` : ""}`;
+  const leave = async () => {
+    await page.getByRole("button", { name: /^Cancel$/ }).filter({ visible: true }).first().click({ timeout: 5000 }).catch(() => {});
+    await page.getByRole("button", { name: /^Discard$/ }).filter({ visible: true }).first().click({ timeout: 5000 }).catch(() => {});
+  };
+  const sounds = page.getByRole("button", { name: /^Sounds$/ }).first();
+  if (!(await sounds.isVisible({ timeout: 20_000 }).catch(() => false))) return `TikTok's upload page didn't offer its Sounds button, so ${what} wasn't added.`;
+  await sounds.click();
+  const search = page.getByPlaceholder("Search sounds");
+  await search.waitFor({ state: "visible", timeout: 30_000 });
+  const gotIt = page.getByRole("button", { name: /^Got it$/ }).filter({ visible: true }).first();
+  if (await gotIt.isVisible({ timeout: 1500 }).catch(() => false)) await gotIt.click();
+  await search.fill(`${song.title} ${song.artist}`.trim());
+  await page.keyboard.press("Enter");
+  const items = page.locator("[class*=MusicPanelMusicItem__wrap]").filter({ visible: true });
+  await items.first().waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
+  await page.waitForTimeout(1500); // the list fills in as results arrive
+  const texts = await items.allInnerTexts().catch(() => [] as string[]);
+  const i = pickSong(texts.map(tiktokResult), song.title, song.artist);
+  if (i < 0) { await leave(); return `TikTok's library has no ${what}, so it went without a song. The caption credit (if chosen) still names it.`; }
+  const tracksBefore = await page.locator("[class*=Track__root]").count();
+  const item = items.nth(i);
+  await item.hover();
+  await item.locator("button").filter({ visible: true }).last().click();
+  for (let n = 0; n < 20 && (await page.locator("[class*=Track__root]").count()) <= tracksBefore; n++) await page.waitForTimeout(300);
+  if ((await page.locator("[class*=Track__root]").count()) <= tracksBefore) { await leave(); return `TikTok didn't add ${what} to the video, so it went without a song.`; }
+  if (song.mute) {
+    // The newest lane is the song's; its speaker button mutes just that lane.
+    await page.locator("[class*=TrackOperation__item] button").last().click();
+    const db = page.locator("[class*=PropSettingSliderInput] input[type=text], [class*=PropSettingInput__input]").first();
+    let muted = false;
+    for (let n = 0; n < 15 && !muted; n++) { muted = /∞/.test(await db.inputValue().catch(() => "")); if (!muted) await page.waitForTimeout(200); }
+    if (!muted) { await leave(); return `TikTok wouldn't set ${what} to 0%, so it went without a song rather than playing over your sound.`; }
+  }
+  await page.getByRole("button", { name: /^Save$/ }).filter({ visible: true }).first().click();
+  await search.waitFor({ state: "hidden", timeout: 60_000 });
+  log(`Added ${what} from TikTok's library${song.mute ? ", muted so only your own sound is heard" : ""}.`);
+  return `Added ${what} from TikTok's library${song.mute ? " at 0%, so only your own sound is heard" : ""}. TikTok shows it on the post.`;
+}
+
 export const tiktok: Platform = {
   id: "tiktok",
   label: "TikTok",
   loginUrl: "https://www.tiktok.com/login",
   host: /^https:\/\/([a-z0-9-]+\.)*tiktok\.com(\/|$)/,
   verified: true,
+  addsSongs: true,
 
   async isLoggedIn(page: Page): Promise<boolean> {
     // TikTok sets sessionid / sid_tt on .tiktok.com once a login completes.
@@ -51,6 +100,8 @@ export const tiktok: Platform = {
       .first();
     await editor.waitFor({ state: "visible", timeout: uploadMs });
     await dismissModals(page, log);
+    // The song goes in before the caption: the editor covers the whole upload page.
+    if (input.song?.title) input.songNote?.(await addSong(page, input.song, log));
     await editor.click();
     await page.keyboard.press("Meta+A");
     await page.keyboard.press("Backspace");

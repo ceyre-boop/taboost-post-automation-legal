@@ -82,7 +82,7 @@ test("host patterns are anchored and match their own login URL", () => {
   assert.equal(PLATFORMS.youtube.host.test("https://studio.youtube.com/channel/abc"), true);
 });
 
-test("uploadTimeoutMs scales with file size within 5 to 45 minutes", () => {
+test("uploadTimeoutMs scales with file size within 5 minutes to 6 hours", () => {
   const dir = mkdtempSync(join(tmpdir(), "timing-"));
   const small = join(dir, "s.bin");
   writeFileSync(small, "x");
@@ -99,4 +99,34 @@ test("waitClickable throws the never-clickable error instead of forcing", async 
   let n = 0;
   const later = { isEnabled: async () => ++n > 2, getAttribute: async () => null };
   await waitClickable(later, "Threads", 10_000, async () => {}, 1000);
+});
+
+test("a YouTube Studio row is only acted on when it carries exactly one video id", async () => {
+  const { videoIdIn } = await import("./youtube.ts");
+  assert.equal(videoIdIn('<img src="https://i.ytimg.com/vi/Tj7aHUXIHZs/mqdefault.jpg">'), "Tj7aHUXIHZs");
+  assert.equal(videoIdIn('<img src="https://i.ytimg.com/vi/Tj7aHUXIHZs/a.jpg"><img src="https://i.ytimg.com/vi/Tj7aHUXIHZs/b.jpg">'), "Tj7aHUXIHZs");
+  assert.equal(videoIdIn('<img src="https://i.ytimg.com/vi/Tj7aHUXIHZs/a.jpg"><img src="https://i.ytimg.com/vi/L_TUAEAOMjA/b.jpg">'), null, "two videos in one block: refuse");
+  assert.equal(videoIdIn("<div>no picture yet</div>"), null);
+});
+
+test("a preview or post waits until the site has the whole video, and gives up only when the upload stalls", async () => {
+  const { waitUploaded } = await import("./timing.ts");
+  const said: string[] = [];
+  // 0% → 100% in steps, then the bar goes away: waits it out and says how far along it is.
+  const steps = [0, 10, 10, 35, 60, 99, 100];
+  let i = 0;
+  await waitUploaded(async () => { const p = steps[Math.min(i++, steps.length - 1)]; return { uploading: p < 100, pct: p }; }, "Facebook", 6 * 3600_000, (m) => said.push(m), async () => {}, 15_000);
+  assert.ok(i >= steps.length, "kept looking until 100%");
+  assert.ok(said.some((m) => /Sending the video to Facebook: \d+%/.test(m)));
+  assert.equal(said.at(-1), "Facebook has the whole video.");
+  // Stuck at 42% for over 10 minutes: a plain reason, not a silent wait for hours.
+  await assert.rejects(waitUploaded(async () => ({ uploading: true, pct: 42 }), "YouTube", 6 * 3600_000, () => {}, async () => {}, 60_000), /stopped receiving the video at 42%/);
+  // A site with nothing to show (no bar at all) isn't waited on.
+  await waitUploaded(async () => ({ uploading: false, pct: null }), "X", 1000, () => {}, async () => {});
+});
+
+test("Facebook's one-time 'Review audience' notice (2026-11-22) is recognised, so the post isn't left waiting on it", async () => {
+  const { FB_NOTICE } = await import("./facebook.ts");
+  assert.match("Review audience\nChoose who can see this and future posts and reels\nAll video posts are now reels", FB_NOTICE);
+  assert.doesNotMatch("Create post\nColin Eyre\nWhat's on your mind, Colin?\nPost", FB_NOTICE);
 });

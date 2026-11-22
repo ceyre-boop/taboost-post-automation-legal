@@ -102,8 +102,8 @@
 
   /* ---- accounts ---- */
   .accounts { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-  .acct { display: flex; align-items: center; gap: 12px; padding: 14px; }
-  .acct .who { min-width: 0; flex: 1; }
+  .acct { display: flex; align-items: center; gap: 12px; padding: 14px; flex-wrap: wrap; }
+  .acct .who { min-width: 0; flex: 1 1 170px; }
   .acct .who b { display: block; }
   .acct .acts { display: flex; gap: 6px; }
   .skeleton { height: 68px; border-radius: var(--radius); background: linear-gradient(90deg, var(--panel) 0%, var(--panel-2) 50%, var(--panel) 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border: 1px solid var(--line); }
@@ -284,7 +284,7 @@
 
     <section id="ob-connect" hidden>
       <h1>Connect your accounts.</h1>
-      <p class="lede">Click Connect, sign in inside the Chrome window that opens, then come back here. Connect as many as you like; you can add more later.</p>
+      <p class="lede">Click Connect and sign in the way you normally do, in the Chrome window that opens. Chrome can fill in your saved passwords. Then come back here and press Done. You only do this once per account: it stays signed in.</p>
       <div id="ob-chrome"></div>
       <div class="accounts" id="ob-accounts"></div>
       <div class="foot">
@@ -344,6 +344,26 @@
         <h2>Where it goes</h2>
         <p class="muted" id="where-sub">Only connected accounts can be picked.</p>
         <div class="chips" id="chips"><div class="skeleton" style="width:100%;height:40px"></div></div>
+      </div>
+
+      <div class="section" id="pp-section" hidden>
+        <div class="row" style="justify-content:space-between">
+          <h2>Captions for each platform</h2>
+          <label class="switch"><input type="checkbox" id="pp-toggle"><i></i><span>Change it for each platform</span></label>
+        </div>
+        <p class="muted small" id="pp-sub">Off: every platform gets the caption above. On: each platform starts with it and you change it where you like.</p>
+        <div class="caps" id="pp" style="margin-top:10px" hidden></div>
+      </div>
+
+      <div class="section" id="song-section" hidden>
+        <h2>Song in this video <span class="muted small" style="font-weight:500">(optional)</span></h2>
+        <p class="muted small">Playing along to a song? Name it once and choose what each platform gets.</p>
+        <div class="row" style="margin-top:10px;flex-wrap:nowrap">
+          <input class="field" id="song-title" maxlength="120" placeholder="Song title" aria-label="Song title" autocomplete="off">
+          <input class="field" id="song-artist" maxlength="120" placeholder="Artist" aria-label="Artist" autocomplete="off">
+        </div>
+        <div class="caps" id="song-plats" style="margin-top:10px" hidden></div>
+        <p class="small" id="song-note" style="color:var(--warn);margin-top:8px" hidden></p>
       </div>
 
       <div class="section">
@@ -419,7 +439,7 @@
         <p class="muted small" style="margin-top:4px">Got a video that's almost done? Add it and the app finishes it: fits it to an upright phone screen, adds a title, captions and music, ends on your logo, and writes each account's caption. Clips are also mixed in behind the other posts, and the week's plan uses them first.</p>
         <div class="section" style="margin-top:12px"><span class="small" style="font-weight:600;color:var(--ink-2)">Write captions for</span><div class="chips" id="mk-chips-clips" style="margin-top:6px"></div></div>
         <div class="clips" id="mk-clips"></div>
-        <button type="button" class="drop" id="mk-add-clip">+ Add a clip (MP4 or MOV, up to 1 GB). Or drop it here.</button>
+        <button type="button" class="drop" id="mk-add-clip">+ Add a clip (MP4 or MOV, any size). Or drop it here.</button>
         <input type="file" id="mk-pick-clip" accept="video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v" multiple hidden>
       </div>
 
@@ -452,6 +472,7 @@
           <div class="muted small" id="pg-now"></div>
         </div>
         <div class="card gridwrap" style="margin-top:14px"><table class="grid" id="pg-grid"></table></div>
+        <div class="card pad" id="pg-adjusted" style="margin-top:14px;display:grid;gap:8px" hidden></div>
         <div class="fails" id="pg-fails"></div>
       </div>
     </div>
@@ -595,14 +616,23 @@
   function accountCards() {
     const s = state.status;
     if (!s) return state.app.platforms.map(() => '<div class="skeleton"></div>').join('');
+    const monthYear = (iso) => new Date(iso).toLocaleDateString([], { month: 'short', year: 'numeric' });
     return state.app.platforms.map(({ id, label }) => {
-      const on = !s.error && s[id]?.loggedIn;
-      const waiting = state.waiting.has(id) && !on;
-      const pill = on ? '<span class="pill ok">Connected</span>' : waiting ? '<span class="pill info busy">Waiting for you to sign in</span>' : '<span class="pill">Not connected</span>';
-      const acts = on
-        ? `<button class="btn sm quiet" data-disconnect="${esc(id)}">Disconnect</button>`
+      const a = s.error ? {} : s[id] || {};
+      const on = !!a.loggedIn;
+      const signing = !!a.signingIn;
+      const waiting = (signing || state.waiting.has(id)) && !on;
+      const pill = signing && on ? '<span class="pill ok">Signed in</span>'
+        : on ? '<span class="pill ok">Connected</span>'
+        : waiting ? '<span class="pill info busy">Waiting for you to sign in</span>'
+        : '<span class="pill">Not connected</span>';
+      const line = signing ? `<div class="muted small">${on ? 'Done? Press Done, or close the sign-in window.' : 'Sign in in the Chrome window that opened. Chrome can fill in saved passwords.'}</div>`
+        : on && a.until ? `<div class="muted small">Stays signed in until about ${esc(monthYear(a.until))}</div>` : '';
+      const acts = signing
+        ? `<button class="btn sm ${on ? 'primary' : ''}" data-signin-done="${esc(id)}">Done</button><button class="btn sm quiet" data-connect="${esc(id)}">Show window</button>`
+        : on ? `<button class="btn sm quiet" data-disconnect="${esc(id)}">Disconnect</button>`
         : `<button class="btn sm ${waiting ? '' : 'primary'}" data-connect="${esc(id)}">${waiting ? 'Open window again' : 'Connect'}</button>`;
-      return `<div class="card acct">${badge(id)}<div class="who"><b>${esc(label)}</b>${pill}</div><div class="acts">${acts}</div></div>`;
+      return `<div class="card acct">${badge(id)}<div class="who"><b>${esc(label)}</b>${pill}${line}</div><div class="acts" style="flex-wrap:wrap;justify-content:flex-end">${acts}</div></div>`;
     }).join('');
   }
 
@@ -621,12 +651,19 @@
   document.addEventListener('click', async (e) => {
     const c = e.target.closest('[data-connect]');
     const d = e.target.closest('[data-disconnect]');
+    const done = e.target.closest('[data-signin-done]');
+    if (done) {
+      done.disabled = true; done.textContent = 'Closing…';
+      try { state.status = await post('/api/signin/done'); state.statusAt = Date.now(); state.waiting.clear(); const l = state.status[done.dataset.signinDone]; toast(l?.loggedIn ? `${l.label} is connected. You won't need to sign in again on this Mac.` : 'The sign-in window is closed.'); }
+      catch (err) { toast(err.message); }
+      renderStatus();
+    }
     if (c) {
       const id = c.dataset.connect;
       c.disabled = true;
-      try { await post('/api/login', { platform: id }); state.waiting.add(id); toast('A Chrome window opened. Sign in there, then come back.'); }
+      try { await post('/api/login', { platform: id }); state.waiting.add(id); toast('A Chrome window opened. Sign in there the way you normally do, then come back and press Done.'); }
       catch (err) { toast(err.message); }
-      renderStatus();
+      await refreshStatus(true);
     }
     if (d) {
       const id = d.dataset.disconnect;
@@ -639,8 +676,10 @@
   });
   $('#acct-refresh').addEventListener('click', async () => { $('#acct-refresh').disabled = true; await refreshStatus(true); $('#acct-refresh').disabled = false; });
   // While a sign-in window is open, keep checking so "Connected" appears by itself.
-  setInterval(() => { if (state.waiting.size && !document.hidden) refreshStatus(true); }, 4000);
-  window.addEventListener('focus', () => { if (state.waiting.size) refreshStatus(true); });
+  // While a sign-in window is open, keep checking so "Signed in" appears by itself (and notice the window being closed).
+  const signingAny = () => !!state.status && !state.status.error && Object.values(state.status).some((x) => x && x.signingIn);
+  setInterval(() => { if ((state.waiting.size || signingAny()) && !document.hidden) refreshStatus(true); }, 4000);
+  window.addEventListener('focus', () => { if (state.waiting.size || signingAny()) refreshStatus(true); });
 
   /* ---------------- first run ---------------- */
   function onboardStep(n) {
@@ -660,11 +699,11 @@
     let ai = null;
     try { ai = (await api('/api/maker')).ai; } catch { return; }
     if (ai.ready) { $('#ob-ai').innerHTML = ''; return; }
-    $('#ob-ai').innerHTML = `<div class="card pad" style="margin-bottom:22px"><h2>One more thing: your API key</h2>
-      <p class="muted" style="margin-top:4px">The Make screen writes posts for you with an Anthropic API key. <a href="https://console.anthropic.com/" target="_blank" rel="noopener">Create an Anthropic account</a>, add a payment method under <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">Billing</a>, make a key under <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">API keys</a>, and paste it here. It stays on this Mac. A post usually costs a few cents to write.</p>
-      <form id="ob-key" class="row" autocomplete="off" style="margin-top:12px"><label class="small" for="ob-key-in" style="font-weight:600;color:var(--ink-2)">Anthropic API key</label><input class="inp" type="password" id="ob-key-in" autocomplete="new-password" placeholder="sk-ant-…" style="flex:1;min-width:220px" required><button class="btn primary" type="submit">Save key</button></form>
-      <p class="small" id="ob-key-err" role="alert" style="color:var(--bad);margin-top:8px" hidden></p>
-      <p class="small muted" style="margin-top:8px">You can skip this: posting your own videos works without a key, and you can add it later on the Make screen.</p></div>`;
+    // Optional, and it says so first: someone posting their own videos never needs it.
+    $('#ob-ai').innerHTML = `<details class="card pad" style="margin-bottom:22px"><summary style="cursor:pointer"><b>Optional: let the app write posts for you</b> <span class="muted small">(not needed to post your own videos)</span></summary>
+      <p class="muted" style="margin-top:8px">The Make screen writes posts for you with an Anthropic API key. <a href="https://console.anthropic.com/" target="_blank" rel="noopener">Create an Anthropic account</a>, add a payment method under <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">Billing</a>, make a key under <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">API keys</a>, and paste it here. It stays on this Mac. A post usually costs a few cents to write. You can also do this later on the Make screen.</p>
+      <form id="ob-key" class="row" autocomplete="off" style="margin-top:12px"><label class="small" for="ob-key-in" style="font-weight:600;color:var(--ink-2)">Anthropic API key</label><input class="inp" type="password" id="ob-key-in" autocomplete="new-password" placeholder="sk-ant-…" style="flex:1;min-width:220px" required><button class="btn" type="submit">Save key</button></form>
+      <p class="small" id="ob-key-err" role="alert" style="color:var(--bad);margin-top:8px" hidden></p></details>`;
   }
   $('#ob-ai').addEventListener('submit', async (e) => {
     if (e.target.id !== 'ob-key') return;
@@ -716,6 +755,7 @@
         <button class="btn sm quiet" data-remove="${c.id}" aria-label="Remove ${esc(c.file.name)}">Remove</button>
       </div>`).join('');
     renderSummary();
+    if (state.app) renderExtras();
   }
   $('#clips').addEventListener('input', (e) => { const row = e.target.closest('[data-clip]'); const c = state.clips.find((x) => x.id === row?.dataset.clip); if (c && e.target.tagName === 'TEXTAREA') { c.caption = e.target.value; renderSummary(); } });
   $('#clips').addEventListener('click', (e) => { const b = e.target.closest('[data-remove]'); if (!b) return; const i = state.clips.findIndex((x) => x.id === b.dataset.remove); if (i >= 0) { URL.revokeObjectURL(state.clips[i].url); state.clips.splice(i, 1); renderClips(); } });
@@ -733,9 +773,82 @@
     $('#chips').innerHTML = state.app.platforms.map(({ id, label }) => on.includes(id)
       ? `<label class="chip">${badge(id, true)}<input type="checkbox" value="${esc(id)}" ${state.picked?.has(id) ? 'checked' : ''}>${esc(label)}</label>`
       : `<span class="chip off">${badge(id, true)}${esc(label)} <button type="button" data-go-accounts>Connect</button></span>`).join('');
+    renderExtras();
   }
-  $('#chips').addEventListener('change', (e) => { if (!state.picked) state.picked = new Set(); e.target.checked ? state.picked.add(e.target.value) : state.picked.delete(e.target.value); renderSummary(); });
+  $('#chips').addEventListener('change', (e) => { if (!state.picked) state.picked = new Set(); e.target.checked ? state.picked.add(e.target.value) : state.picked.delete(e.target.value); renderSummary(); renderExtras(); });
   $('#chips').addEventListener('click', (e) => { if (e.target.closest('[data-go-accounts]')) go('accounts'); });
+
+  /* ---------------- post: a caption for each platform, and the song ---------------- */
+  const pp = { on: false, text: {}, edited: new Set() };
+  const song = { credit: new Set(), lib: new Set(['tiktok']), mute: true };
+  const pickedIds = () => state.app.platforms.map((p) => p.id).filter((id) => state.picked?.has(id));
+  const short = (id) => (state.app.platforms.find((p) => p.id === id)?.label || id).replace(/\s*\(.*\)$/, '');
+  /** The caption every platform starts from, or null when each clip has its own. */
+  function baseCaption() {
+    if ($('#shared-toggle').checked) return $('#shared-caption').value;
+    return state.clips.length === 1 ? state.clips[0].caption : null;
+  }
+  const limitOf = (id) => (state.app.captionLimits || {})[id] || 2200;
+  function countLine(id, text) {
+    const n = [...text].length, lim = limitOf(id);
+    const extra = id === 'x' && n > lim ? ' · X shortens it to fit' : id === 'youtube' ? ' · first line is the title (100 characters)' : '';
+    return `<span class="count ${n > lim && id !== 'x' ? 'over' : ''}">${n} / ${lim}${extra}</span>`;
+  }
+  function renderPP() {
+    const ids = pickedIds(), base = baseCaption();
+    $('#pp-section').hidden = !state.clips.length || !ids.length;
+    $('#pp-toggle').disabled = base === null;
+    if (base === null) { pp.on = false; $('#pp-toggle').checked = false; }
+    $('#pp-sub').textContent = base === null ? 'Each of your clips has its own caption. To change captions for each platform, turn on "One caption for every clip" above, or post one clip.' : 'Off: every platform gets the caption above. On: each platform starts with it and you change it where you like.';
+    $('#pp').hidden = !pp.on;
+    if (!pp.on) return;
+    for (const id of ids) if (!pp.edited.has(id)) pp.text[id] = base;
+    $('#pp').innerHTML = ids.map((id) => `<div class="cap" data-pp="${esc(id)}"><div class="row">${badge(id, true)}<b>${esc(short(id))}</b>${countLine(id, pp.text[id] || '')}</div><textarea class="inp" rows="3" aria-label="Caption on ${esc(short(id))}">${esc(pp.text[id] || '')}</textarea></div>`).join('');
+  }
+  $('#pp-toggle').addEventListener('change', (e) => { pp.on = e.target.checked; renderPP(); });
+  $('#pp').addEventListener('input', (e) => {
+    const box = e.target.closest('[data-pp]'); if (!box) return;
+    const id = box.dataset.pp; pp.text[id] = e.target.value; pp.edited.add(id);
+    box.querySelector('.count').outerHTML = countLine(id, e.target.value);
+  });
+  // A change to the caption above flows into the platforms not changed by hand.
+  function baseChanged() {
+    if (!pp.on) return;
+    const base = baseCaption(); if (base === null) return;
+    for (const box of $$('#pp [data-pp]')) { const id = box.dataset.pp; if (pp.edited.has(id)) continue; pp.text[id] = base; box.querySelector('textarea').value = base; box.querySelector('.count').outerHTML = countLine(id, base); }
+  }
+  $('#shared-caption').addEventListener('input', baseChanged);
+  $('#clips').addEventListener('input', baseChanged);
+
+  function renderSong() {
+    const ids = pickedIds(), named = !!$('#song-title').value.trim();
+    $('#song-section').hidden = !state.clips.length || !ids.length;
+    $('#song-plats').hidden = !named; $('#song-note').hidden = !named;
+    if (!named) return;
+    // Named for the first time: credit it everywhere TikTok's own library isn't doing that already.
+    if (!song.touched) { song.credit = new Set(ids.filter((id) => !(id === 'tiktok' && song.lib.has(id)))); }
+    const help = state.app.music?.help || {};
+    $('#song-note').textContent = state.app.music?.note || '';
+    $('#song-plats').innerHTML = ids.map((id) => {
+      const lib = state.app.platforms.find((p) => p.id === id) && id === 'tiktok';
+      return `<div class="cap" data-song="${esc(id)}"><div class="row">${badge(id, true)}<b>${esc(short(id))}</b></div>
+        ${lib ? `<label class="row small" style="gap:8px"><input type="checkbox" data-song-lib ${song.lib.has(id) ? 'checked' : ''}> Add it from ${esc(short(id))}'s song library, so the post shows the song</label>
+        <label class="row small" style="gap:8px;padding-left:24px"><input type="checkbox" data-song-mute ${song.mute ? 'checked' : ''} ${song.lib.has(id) ? '' : 'disabled'}> At 0%: only my own sound is heard</label>` : ''}
+        <label class="row small" style="gap:8px"><input type="checkbox" data-song-credit ${song.credit.has(id) ? 'checked' : ''}> Add "${esc(creditPreview())}" to the caption</label>
+        <span class="small muted">${esc(lib ? 'If TikTok\'s library doesn\'t have this exact song, it posts without one and says so.' : help[id] || '')}</span></div>`;
+    }).join('');
+  }
+  const creditPreview = () => { const t = $("#song-title").value.trim(), a = $("#song-artist").value.trim(); return a ? `🎵 ${t} by ${a}` : `🎵 ${t}`; };
+  for (const id of ['#song-title', '#song-artist']) $(id).addEventListener('input', () => { const shown = !$('#song-plats').hidden; if (!shown || !$('#song-title').value.trim()) return renderSong(); for (const el of $$('#song-plats [data-song-credit]')) el.parentElement.lastChild.textContent = ` Add "${creditPreview()}" to the caption`; });
+  $('#song-plats').addEventListener('change', (e) => {
+    const box = e.target.closest('[data-song]'); if (!box) return;
+    const id = box.dataset.song;
+    song.touched = true;
+    if (e.target.matches('[data-song-lib]')) { e.target.checked ? song.lib.add(id) : song.lib.delete(id); renderSong(); }
+    if (e.target.matches('[data-song-mute]')) song.mute = e.target.checked;
+    if (e.target.matches('[data-song-credit]')) e.target.checked ? song.credit.add(id) : song.credit.delete(id);
+  });
+  function renderExtras() { renderPP(); renderSong(); }
 
   const spaceValue = () => Number($('input[name="space"]:checked')?.value ?? 60);
   $('#spacing').addEventListener('change', async () => { $('#space-warn').hidden = spaceValue() !== 0; renderSummary(); try { state.app.settings = await post('/api/settings', { spaceSec: spaceValue() }); } catch {} });
@@ -756,18 +869,45 @@
   async function send(live) {
     const fd = new FormData();
     const shared = $('#shared-toggle').checked;
-    state.clips.forEach((c, i) => { fd.append('videos', c.file, c.file.name); if (!shared) fd.append(`caption${i}`, c.caption); });
+    // The choices go first and the videos last, so the app can turn down a wrong choice before gigabytes arrive.
     fd.append('caption', shared ? $('#shared-caption').value : '');
     for (const id of state.picked) fd.append('platforms', id);
     fd.append('space', String(spaceValue()));
     if (live) fd.append('live', 'on');
+    if (!shared) state.clips.forEach((c, i) => fd.append(`caption${i}`, c.caption));
+    // Each platform's own caption, where it was changed.
+    const base = baseCaption();
+    if (pp.on && base !== null) for (const id of state.picked) if (pp.text[id] !== undefined && pp.text[id].trim() !== base.trim()) fd.append(`caption@${id}`, pp.text[id]);
+    // The song: from the platform's own library where it can, and a credit line where chosen.
+    const title = $('#song-title').value.trim();
+    if (title) {
+      fd.append('song_title', title); fd.append('song_artist', $('#song-artist').value.trim());
+      for (const id of state.picked) { if (song.credit.has(id)) fd.append(`song@${id}`, 'on'); if (id === 'tiktok' && song.lib.has(id)) fd.append(`songlib@${id}`, 'on'); }
+      if (song.mute) fd.append('song_mute', 'on');
+    }
+    state.clips.forEach((c) => fd.append('videos', c.file, c.file.name));
     $('#btn-preview').disabled = $('#btn-post').disabled = true;
     $('#sum-line').textContent = 'Sending your clips to the app…';
+    const total = state.clips.reduce((n, c) => n + c.file.size, 0);
     try {
-      const { id } = await api('/api/batch', { method: 'POST', body: fd });
+      const { id } = await upload('/api/batch', fd, (sent) => {
+        $('#sum-line').textContent = `Sending your clips to the app: ${size(Math.min(sent, total))} of ${size(total)} (${Math.min(100, Math.round((sent / Math.max(1, total)) * 100))}%)`;
+        $('#sum-sub').textContent = 'Keep this window open until it reaches 100%.';
+      });
       state.batchId = id; state.batch = null;
       go('progress'); pollBatch();
     } catch (e) { toast(e.message); renderSummary(); }
+  }
+  /** A form upload that reports how much has gone (fetch can't), with no time limit. */
+  function upload(path, fd, onProgress) {
+    return new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open('POST', path);
+      x.upload.onprogress = (e) => onProgress(e.loaded);
+      x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch {} x.status >= 200 && x.status < 300 ? resolve(j) : reject(new Error(j.error || `Something went wrong (${x.status}).`)); };
+      x.onerror = () => reject(new Error('The upload stopped before the whole video arrived. Check that the app is still open, then try again.'));
+      x.send(fd);
+    });
   }
   $('#btn-preview').addEventListener('click', () => send(false));
   $('#btn-post').addEventListener('click', () => {
@@ -822,9 +962,14 @@
         if (it.status === 'done' && /deleted/.test(it.note || '')) word = 'Posted, then removed';
         if (it.status === 'done' && it.fix) { word = 'Posted, not removed'; cls = 'warn'; }
         const pill = `<span class="pill ${cls}">${esc(word)}</span>`;
-        return `<td>${it.fix ? `<button class="cellbtn" data-jump="${esc(it.platform + '|' + it.video)}" title="See how to fix this">${pill}</button>` : pill}</td>`;
+        const smaller = it.adjusted ? `<div class="small muted" style="margin-top:4px" title="${esc(it.adjusted)}">Smaller copy</div>` : '';
+        return `<td>${it.fix ? `<button class="cellbtn" data-jump="${esc(it.platform + '|' + it.video)}" title="See how to fix this">${pill}</button>` : pill}${smaller}</td>`;
       }).join('')}</tr>`;
     }).join('')}</tbody>`;
+    // What the app did for a platform that takes less than the clip, in its own words.
+    const adj = b.items.filter((i) => i.adjusted || i.songNote);
+    $('#pg-adjusted').hidden = !adj.length;
+    $('#pg-adjusted').innerHTML = adj.map((i) => `<p class="small" style="margin:0">${badge(i.platform, true)} <b>${esc(i.name)}</b>: ${i.adjusted ? esc(i.adjusted) + ' The other platforms got the original. ' : ''}${esc(i.songNote || '')}</p>`).join('');
 
     const fails = b.items.filter((i) => i.fix);
     $('#pg-fails').innerHTML = fails.map((i) => `
@@ -1082,7 +1227,7 @@
       const btn = $('#mk-add-clip'); btn.disabled = true; btn.textContent = `Adding ${f.name}…`;
       try { const r = await api(`/api/maker/clip?name=${encodeURIComponent(f.name)}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: f }); mk.s.clips = r.clips; mk.s.problem = r.problem; delete sig.clips; renderMkClips(); renderPlan(); renderIdeas(); toast(`Added. Now say what it shows, then press Finish this clip.`); }
       catch (e) { toast(`${f.name}: ${e.message}`); }
-      btn.disabled = false; btn.textContent = '+ Add a clip (MP4 or MOV, up to 1 GB). Or drop it here.';
+      btn.disabled = false; btn.textContent = '+ Add a clip (MP4 or MOV, any size). Or drop it here.';
     }
   }
   async function saveClipBox(box) {

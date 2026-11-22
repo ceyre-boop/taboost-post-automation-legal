@@ -46,6 +46,17 @@ The browser-only accounts sign in at the Mac: `sh scripts/signin.sh --device sky
 
 Tests: `npm test` (settings, naming, the platform list, the failure messages, devices, weekly, the post maker, security, phone-link mode, the adapters' caption and site rules) and `bun run typecheck`.
 
+## Creator-ready (2026-11-22, branch `creator-ready`, on top of `video-maker`)
+
+After a drummer's 147 MB phone video failed everywhere. Official sign-in, account pickers, captions per platform and the song card are `video-maker`'s (above); this adds:
+
+- **Any size.** Uploads from the Mac's Post screen and the phone stream to disk with flat memory (`src/multipart.ts`): no 4 GB cap, no 5-minute request limit, upload progress on both. When a platform's website takes less than the clip (X 512 MB / 2 min 20 s, LinkedIn 30 Mbps, Threads 1 GB / 5 min), the browser path posts a smaller copy made with macOS's own `avconvert` and the grid says so (`src/fit.ts`; limits with sources in `src/platforms/limits.ts`). YouTube and Facebook wait until they have the whole video before a preview counts or Post is pressed.
+- **Previews leave nothing.** A YouTube Studio preview deletes the draft Studio keeps, found by its video id and checked on a reloaded list.
+- **Sign in once on the Mac.** The dashboard's Connect opens the set's profile as a plain Chrome window (no automation: Google allows it, Chrome fills in passwords); Done closes it (`src/signin.ts`). Accounts reads the profile's cookie file for who's signed in and until when, without opening Chrome.
+- **The Mac's Post screen:** "Change it for each platform" with each platform's limit, and the song named once: TikTok Studio adds it from TikTok's own library, at 0% if asked (`src/platforms/tiktok.ts`, `src/platforms/song.ts`), and any platform can get the credit line.
+- **Browser-path fixes from live tests:** Facebook's one-time "Review audience" notice and its emptied composer, YouTube's "Video processing" box and daily upload limit.
+- Research for every platform's official API and web limits: `docs/OFFICIAL-APIS.md`. Steps only Colin can do: `docs/COLIN-CHECKLIST.md`.
+
 ## The post maker (2026-11-21)
 
 The **Make** screen makes posts as well as posting them:
@@ -59,7 +70,7 @@ The **Make** screen makes posts as well as posting them:
 ### Second round (2026-11-22, branch `video-maker`)
 
 - **Six looks** (`src/maker/formats.ts`), each with its own layout in `dashboard/render.html` and its own rules in `checks.ts`: Quick tips, 1-2-3 steps, Myth vs fact (the myth is struck through), Problem and fix, A question people ask (a speech bubble), and One number (counted up, only for a fact with a number). Ideas come in as many different looks and facts as possible.
-- **Your clips** (`src/maker/clips.ts`): add an MP4 or MOV (up to 1 GB, written to disk as it arrives; length, size, sound and codec are read from the file; ProRes is refused with how to export). Say what it shows, pick at most 56 seconds of it, and **Finish this clip**: it's fitted to an upright screen (over a blurred copy of itself when it's wide), with the title, captions in turn, the clip's own sound under the music, and the end card. Clips are also mixed in behind the photo looks.
+- **Your clips** (`src/maker/clips.ts`): add an MP4 or MOV (any size, written to disk as it arrives; length, size, sound and codec are read from the file; ProRes is refused with how to export). Say what it shows, pick at most 56 seconds of it, and **Finish this clip**: it's fitted to an upright screen (over a blurred copy of itself when it's wide), with the title, captions in turn, the clip's own sound under the music, and the end card. Clips are also mixed in behind the photo looks.
 - **This week** (`src/maker/plan.ts`): **Plan my week** picks 3 to 5 posts (unused clips first, then varied looks) on spread-out days at midday and evening, makes them one at a time, and waits. Nothing posts until it's approved; an approved post goes out at its time while the app is open, and one more than 6 hours late waits for the person again. "Plan a new week by itself" re-plans when the week ends, and each post still needs approval.
 - Voice is not built yet (decided 2026-11-22: later, with a paid voice service or Colin's own recording).
 

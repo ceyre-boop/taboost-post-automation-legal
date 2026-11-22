@@ -493,7 +493,6 @@ $("post").onclick = async () => {
   if (over.length) return banner(`Too long for ${over.map((id) => platforms.find((p) => p.id === id)?.label).join(", ")}. Shorten it first.`, "err");
   const b = $("post"); b.disabled = true; b.classList.add("busy"); b.textContent = "Uploading…"; banner("", "");
   const fd = new FormData();
-  fd.append("video", f);
   fd.append("caption", $("caption").value);
   fd.append("live", "on");
   if ($("testmode").checked) fd.append("test", "on");
@@ -503,10 +502,25 @@ $("post").onclick = async () => {
   if (ytTitle.trim()) fd.append("youtubeTitle", ytTitle.trim());
   const title = $("stitle").value.trim();
   if (title) fd.append("song", JSON.stringify({ title, artist: $("sartist").value.trim(), credit, igAudioId: igPick?.id }));
+  fd.append("video", f); // last: the Mac checks the choices before a multi-GB video arrives
   try{
-    const r = await api("/api/post", { method:"POST", body: fd });
-    const j = await r.json();
-    if(!r.ok) throw new Error(j.error || ("error "+r.status));
+    // A phone video can be several GB: show how far the upload has got (fetch can't), no time limit.
+    const gb = (n) => n >= 1073741824 ? (n/1073741824).toFixed(2)+" GB" : Math.round(n/1048576)+" MB";
+    const t0 = Date.now();
+    banner("Uploading. Keep this page open and the phone awake until it reaches 100%.", "ok");
+    const j = await new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open("POST", "/api/post");
+      for (const [k, v] of Object.entries(hdrs())) x.setRequestHeader(k, v);
+      x.upload.onprogress = (e) => {
+        const left = e.loaded > 0 ? Math.round((f.size - e.loaded) / (e.loaded / ((Date.now() - t0) / 1000))) : 0;
+        b.textContent = `Uploading ${Math.min(100, Math.round(e.loaded / Math.max(1, f.size) * 100))}% · ${gb(Math.min(e.loaded, f.size))} of ${gb(f.size)}${left > 5 ? ` · ${left > 90 ? Math.round(left / 60) + " min" : left + " s"} left` : ""}`;
+      };
+      x.onload = () => { let r = {}; try { r = JSON.parse(x.responseText); } catch {} x.status >= 200 && x.status < 300 ? resolve(r) : reject(new Error(r.error || ("error " + x.status))); };
+      x.onerror = () => reject(new Error("the connection dropped before the whole video arrived. Check the Wi-Fi and try again."));
+      x.send(fd);
+    });
+    banner("", "");
     b.textContent = "Posting…";
     pollBatch(j.id);
   }catch(e){ banner("Upload failed: "+e.message, "err"); b.classList.remove("busy"); syncPost(); }

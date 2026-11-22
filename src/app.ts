@@ -180,6 +180,12 @@ export function explain(note: string, platformLabel: string): Fix {
   if (/not logged in|log ?in again|signed out|session expired|asked for (google )?log ?in/i.test(n)) {
     return { problem: `You're signed out of ${P}.`, fix: `Open Accounts, click Connect next to ${P}, sign in, then press Try again.`, action: "connect" };
   }
+  if (/daily upload limit/i.test(n)) {
+    return { problem: `${P}'s daily upload limit for this channel is reached.`, fix: "Verify the channel once at youtube.com/verify (Google texts you a code), or wait 24 hours, then press Try again.", action: "retry" };
+  }
+  if (/sign-in window .*still open/i.test(n)) {
+    return { problem: "A sign-in window was still open.", fix: "Finish signing in, press Done in Accounts (or close that Chrome window), then press Try again.", action: "connect" };
+  }
   if (/Chrome not found/i.test(n)) {
     return { problem: "Google Chrome isn't installed.", fix: "Install Chrome from google.com/chrome, then press Try again.", action: "chrome" };
   }

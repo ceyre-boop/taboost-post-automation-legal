@@ -11,6 +11,8 @@ import { APP_DIR, defaultProfile, type Profile } from "./config.ts";
 import { sleep } from "./sleep.ts";
 import type { OfficialResult, Song } from "./official/types.ts";
 import { postOfficial } from "./official/post.ts";
+import { fitFor } from "./fit.ts";
+import type { SongChoice } from "./platforms/types.ts";
 import { spawnSync } from "node:child_process";
 
 export const BATCHES_DIR = join(APP_DIR, "batches");
@@ -36,6 +38,15 @@ export interface BatchItem {
   /** where it went: the platform's id for it, and a link */
   remoteId?: string;
   link?: string;
+  /** What was done for this platform, in plain words, when its own limit was lower than the
+   *  clip ("X takes videos up to 512 MB and 2 min 20 s; this one got a smaller copy."). */
+  adjusted?: string;
+  /** The smaller copy that went to this platform instead of the original. */
+  copy?: string;
+  /** A song added from the platform's own library on its website (TikTok Studio can), maybe at 0%. */
+  librarySong?: SongChoice;
+  /** What happened to that song, in plain words. */
+  songNote?: string;
 }
 export interface Batch {
   id: string;
@@ -101,6 +112,8 @@ export interface BatchInput {
   deleteAfter?: boolean;
   spaceSec?: number;
   sharedCaption?: string;
+  /** A song added from the platform's own library on its website, on the platforms listed. */
+  librarySong?: SongChoice & { platforms: string[] };
 }
 
 /** Expand videos × platforms into a persisted batch (video-major order). */
@@ -113,7 +126,11 @@ export function buildBatch(input: BatchInput): Batch {
     const abs = resolve(v.path);
     if (!existsSync(abs)) throw new Error(`Video not found: ${abs}`);
     const caption = resolveCaption(abs, v.caption, input.sharedCaption ?? "");
-    for (const platform of input.platforms) items.push({ video: abs, caption: v.captions?.[platform] ?? caption, platform, status: "pending" });
+    for (const platform of input.platforms) {
+      const ls = input.librarySong;
+      const librarySong = ls?.title && ls.platforms.includes(platform) && PLATFORMS[platform]?.addsSongs ? { title: ls.title, artist: ls.artist, mute: ls.mute } : undefined;
+      items.push({ video: abs, caption: v.captions?.[platform] ?? caption, platform, status: "pending", ...(librarySong ? { librarySong } : {}) });
+    }
   }
   const batch: Batch = {
     id: batchId(),
@@ -172,8 +189,11 @@ async function postOnPage(
   const platform = getPlatform(item.platform);
   const page = await pageFor(ctx, platform.host);
   if (!(await platform.isLoggedIn(page))) throw new Error(`Not logged in to ${platform.label}. Connect it first.`);
+  // When this platform's website takes less than the clip, it gets a smaller copy and the others the original.
+  const fit = await fitFor(item.platform, platform.label.replace(/\s*\(.*\)$/, ""), item.video, { log });
+  if (fit.copy) { item.copy = fit.path; item.adjusted = fit.note; }
   await page.bringToFront().catch(() => {}); // cosmetic; harmless if another tab is also fronting
-  await platform.post(page, { video: item.video, caption: item.caption, dryRun: !live, clicked }, log);
+  await platform.post(page, { video: fit.path, caption: item.caption, dryRun: !live, clicked, song: item.librarySong, songNote: (n) => { item.songNote = n; } }, log);
 }
 
 /** When each account last posted live, across batches (so a second batch, or "Try failed

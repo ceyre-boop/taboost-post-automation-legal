@@ -119,13 +119,20 @@ test("odd input is refused politely, not crashed on", async () => {
   const bad = await send("POST", "/api/batch", { ...own, "content-type": `multipart/form-data; boundary=${b}` }, form(b, [["videos", "x"], ["platforms", "not-a-platform"]]));
   assert.equal(bad.status, 400);
   assert.equal(existsSync(join(DIR, "uploads")), false, "a refused post writes no file");
-  // A declared body beyond the limit is refused before it is read.
-  const big = await new Promise<number>((resolve) => {
-    const req = request({ host: "127.0.0.1", port: PORT, method: "POST", path: "/api/batch", headers: { host: `127.0.0.1:${PORT}`, ...own, "content-type": `multipart/form-data; boundary=${b}`, "content-length": String(50 * 1024 ** 3) } }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
+  // Choices come before the videos, so a wrong platform is refused before any video is written.
+  const early = await send("POST", "/api/batch", { ...own, "content-type": `multipart/form-data; boundary=${b}` }, form(b, [["platforms", "not-a-platform"], ["videos", "x"]]));
+  assert.equal(early.status, 400);
+  assert.equal(existsSync(join(DIR, "uploads")), false);
+  // The app has no size limit of its own below the platforms' (YouTube takes 256 GB). Only a
+  // runaway request, declared beyond 1 TB, is refused, before it is read.
+  const declared = async (bytes: number) => new Promise<number>((resolve) => {
+    const req = request({ host: "127.0.0.1", port: PORT, agent: false, method: "POST", path: "/api/batch", headers: { host: `127.0.0.1:${PORT}`, ...own, "content-type": `multipart/form-data; boundary=${b}`, "content-length": String(bytes) } }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
     req.on("error", () => resolve(-1));
     req.write("x"); req.end();
   });
-  assert.equal(big, 413);
+  assert.equal(await declared(2 * 1024 ** 4), 413);
+  // More than this Mac's disk can hold is refused up front too, with a plain reason.
+  assert.equal(await declared(900 * 1024 ** 3), 507);
 });
 
 test("nothing the app keeps holds a password, a token or a cookie", () => {

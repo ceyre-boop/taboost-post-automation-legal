@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync, rmdirSync, statSync } from "node:fs";
 import { join, dirname, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
@@ -7,8 +7,15 @@ import { APP_DIR, CDP_PORT, accountProfile, defaultProfile, type Profile } from 
 import { getDevice, createDevice, findDeviceByName, profileOf, type Device } from "./devices.ts";
 import { openView, getView, closeView } from "./remote-view.ts";
 import { withBrowser, pageFor } from "./browser.ts";
+import { cdpAlive, findChrome } from "./chrome.ts";
+import { finishSignIn, openSignIn, sessionsOnDisk, signingIn } from "./signin.ts";
+import { checkSpace, streamMultipart, UploadError, type UploadedFile } from "./multipart.ts";
+import { COPIES_DIR } from "./fit.ts";
+import { songFromForm, videosFromForm } from "./form.ts";
+import { CREDIT_NOTE, MUSIC_HELP } from "./music.ts";
+import { CAPTION_LIMITS } from "./platforms/limits.ts";
 import { PLATFORMS, getPlatform } from "./platforms/index.ts";
-import { buildBatch, finishedVideos, recoverLatestBatch, runBatch as runBatchEngine, saveBatch, type Batch } from "./batch.ts";
+import { buildBatch, finishedVideos, recoverLatestBatch, runBatch as runBatchEngine, saveBatch, type Batch, type BatchInput } from "./batch.ts";
 import { connectionView, disconnectProvider, finishConnect, PROVIDERS, startConnect, tokensFor } from "./official/oauth.ts";
 import { chooseIdentity, connectionFor, MAC, PROVIDER_OF, targetFor, type Provider } from "./official/connections.ts";
 import { instagramSongs } from "./official/meta.ts";
@@ -101,14 +108,29 @@ async function finishPage(req: IncomingMessage, res: ServerResponse, url: URL): 
   res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><body style="font:17px/1.5 -apple-system,sans-serif;background:#0d1117;color:#e9ecf2;padding:40px 22px;max-width:520px;margin:auto"><h1 style="font-size:24px">${title === "Connected" ? "✓ " : ""}${esc(title)}</h1><p>${esc(body)}</p></body>`);
 }
 
-async function status(profile: Profile = defaultProfile) {
+interface AccountStatus { label: string; loggedIn: boolean; verified: boolean; postsUrl: string; until: string | null; signingIn: boolean; }
+
+/**
+ * Which accounts this set is signed in to in the Mac's browser. Opening Accounts doesn't open
+ * Chrome: when the app's Chrome isn't running, or the plain sign-in window has the profile, the
+ * answer comes from the profile's cookie file (names and expiry only). When the app's Chrome is
+ * running, Chrome itself is asked, so a Disconnect shows at once.
+ */
+async function status(profile: Profile = defaultProfile): Promise<Record<string, AccountStatus>> {
+  findChrome(); // the one setup problem a new person can hit: no Chrome at all
+  const disk = await sessionsOnDisk(profile.dir);
+  const sign = signingIn(profile);
+  const row = (id: string, loggedIn: boolean): AccountStatus => {
+    const p = PLATFORMS[id];
+    return { label: p.label, loggedIn, verified: p.verified ?? false, postsUrl: APP_PLATFORMS[id].postsUrl, until: loggedIn ? disk[id]?.until ?? null : null, signingIn: sign?.platform === id };
+  };
+  if (sign || !(await cdpAlive(profile.port))) return Object.fromEntries(appPlatformIds().map((id) => [id, row(id, !!disk[id]?.signedIn)]));
   return withBrowser(async (ctx) => {
-    const out: Record<string, { label: string; loggedIn: boolean; verified: boolean; postsUrl: string }> = {};
+    const out: Record<string, AccountStatus> = {};
     // Only the platforms the app offers, in the order it shows them.
     for (const id of appPlatformIds()) {
-      const p = PLATFORMS[id];
       const page = ctx.pages()[0] ?? (await ctx.newPage());
-      out[p.id] = { label: p.label, loggedIn: await p.isLoggedIn(page).catch(() => false), verified: p.verified ?? false, postsUrl: APP_PLATFORMS[id].postsUrl };
+      out[id] = row(id, await PLATFORMS[id].isLoggedIn(page).catch(() => false));
     }
     return out;
   }, "about:blank", profile);
@@ -174,6 +196,8 @@ function afterBatch(batch: Batch): void {
   // Uploaded copies whose posts are all finished are deleted; the person's own file is never touched.
   for (const v of finishedVideos(batch)) {
     if (v.startsWith(UPLOADS + sep)) { try { rmSync(v, { force: true }); } catch { /* still in use; cleared later */ } }
+    // Smaller copies made for a platform go with their clip.
+    for (const i of batch.items) if (i.video === v && i.copy?.startsWith(COPIES_DIR + sep)) { try { rmSync(i.copy, { force: true }); } catch { /* gone */ } }
   }
   const set = madeBatches.get(batch.id);
   if (set === undefined) return;
@@ -197,8 +221,8 @@ function runEntry(entry: BatchRun, profile: Profile): void {
   })();
 }
 
-function startBatch(videos: { path: string; caption?: string; captions?: Record<string, string> }[], platformIds: string[], live: boolean, spaceSec: number, sharedCaption: string, profile: Profile = defaultProfile, deleteAfter = false): BatchRun {
-  const batch = buildBatch({ videos, platforms: platformIds, live, deleteAfter, spaceSec, sharedCaption });
+function startBatch(videos: { path: string; caption?: string; captions?: Record<string, string> }[], platformIds: string[], live: boolean, spaceSec: number, sharedCaption: string, profile: Profile = defaultProfile, deleteAfter = false, librarySong?: BatchInput["librarySong"]): BatchRun {
+  const batch = buildBatch({ videos, platforms: platformIds, live, deleteAfter, spaceSec, sharedCaption, librarySong });
   const entry: BatchRun = { batch, log: [], done: false };
   batches.set(batch.id, entry);
   lastBatchId = batch.id;
@@ -291,9 +315,9 @@ function json(res: ServerResponse, code: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-/** The most a single request may carry. Videos are big, so this is generous, but it is
- *  not endless: a request is held in memory while it arrives. */
-const MAX_BODY = Number(process.env.POSTER_MAX_UPLOAD_MB ?? 4096) * 1024 * 1024;
+/** The most a request held in memory may carry (settings, photos, a made post's video).
+ *  Video uploads never come through here: they are streamed to disk (src/multipart.ts). */
+const MAX_BODY = 512 * 1024 * 1024;
 class TooBig extends Error {}
 
 async function readBody(req: IncomingMessage, limit = MAX_BODY): Promise<Buffer> {
@@ -312,30 +336,45 @@ async function readBody(req: IncomingMessage, limit = MAX_BODY): Promise<Buffer>
 
 
 let batchClaimed = false;
-/** Read an upload batch and start it. Called with the one-batch claim held. */
+
+/** Read an upload form straight to disk, any size, with flat memory (a platform's own limit is
+ *  dealt with per platform when posting, never here). The page sends its choices first, so a
+ *  wrong platform is refused before the video arrives; they are checked again after. */
+async function takeUpload(req: IncomingMessage, fileField: string): Promise<{ form: Map<string, string[]>; files: UploadedFile[] }> {
+  checkSpace(UPLOADS, Number(req.headers["content-length"] ?? 0));
+  const started = Date.now();
+  const r = await streamMultipart(req, req.headers["content-type"], {
+    dir: UPLOADS, fileFields: [fileField],
+    name: (_f, i, original) => uploadName(i, original || `clip${extname(original) || ".mp4"}`, started),
+    beforeFile: (fields) => {
+      const wrong = (fields.get("platforms") ?? []).find((id) => !PLATFORMS[id]);
+      if (wrong) throw new UploadError(`Unknown platform "${wrong}".`, 400);
+    },
+  });
+  return { form: r.fields, files: r.files };
+}
+const one = (form: Map<string, string[]>, k: string): string | null => form.get(k)?.[0] ?? null;
+const discard = (files: UploadedFile[]) => {
+  for (const f of files) if (f.path) { try { rmSync(f.path, { force: true }); } catch { /* gone */ } }
+  try { rmdirSync(UPLOADS); } catch { /* not empty, or not there */ }
+};
+
+/** Read an upload batch (the Mac's Post screen) and start it. Called with the one-batch claim held. */
 async function takeBatch(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-  const body = await readBody(req);
-  const form = await new Response(new Uint8Array(body), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
-  const platformIds = form.getAll("platforms").map(String);
-  if (!platformIds.length) return json(res, 400, { error: "pick at least one platform" });
-  try { for (const id of platformIds) getPlatform(id); } // validate before writing any file
-  catch (e) { return json(res, 400, { error: (e as Error).message }); }
-  mkdirSync(UPLOADS, { recursive: true });
-  const all = form.getAll("videos");
-  const videos: { path: string; caption?: string }[] = [];
-  for (let i = 0; i < all.length; i++) {
-    const f = all[i];
-    if (!(f instanceof File) || f.size === 0) continue; // keep the ORIGINAL index so captions stay aligned
-    const dest = join(UPLOADS, uploadName(i, f.name || `clip${extname(f.name) || ".mp4"}`));
-    writeFileSync(dest, Buffer.from(await f.arrayBuffer()));
-    const per = String(form.get(`caption${i}`) ?? "").trim();
-    videos.push({ path: dest, caption: per || undefined });
-  }
+  const profile = profileFor(req, url); // an unknown phone is refused before anything is written
+  if (signingIn(profile)) return json(res, 409, { error: "A sign-in window is still open. Finish signing in and press Done in Accounts (or close that Chrome window), then post." });
+  const { form, files } = await takeUpload(req, "videos");
+  const platformIds = form.get("platforms") ?? [];
+  const wrong = platformIds.find((id) => !PLATFORMS[id]);
+  const bad = !platformIds.length ? "pick at least one platform" : wrong ? `Unknown platform "${wrong}".` : "";
+  if (bad) { discard(files); return json(res, 400, { error: bad }); }
+  // One caption, one per clip or one per platform, with the song credit where asked for.
+  const videos = videosFromForm(form, files, platformIds);
   if (!videos.length) return json(res, 400, { error: "pick at least one video" });
   // Spacing comes from the form; a blank field means the saved setting (on by default).
-  const rawSpace = form.get("space");
-  const spaceSec = rawSpace === null || String(rawSpace).trim() === "" ? readSettings().spaceSec : cleanSpace(rawSpace);
-  const entry = startBatch(videos, platformIds, form.get("live") === "on", spaceSec, String(form.get("caption") ?? ""), profileFor(req, url), form.get("deleteAfter") === "on");
+  const rawSpace = one(form, "space");
+  const spaceSec = rawSpace === null || rawSpace.trim() === "" ? readSettings().spaceSec : cleanSpace(rawSpace);
+  const entry = startBatch(videos, platformIds, one(form, "live") === "on", spaceSec, one(form, "caption") ?? "", profile, one(form, "deleteAfter") === "on", songFromForm(form, platformIds));
   return json(res, 200, { id: entry.batch.id });
 }
 
@@ -409,7 +448,11 @@ const server = createServer(async (req, res) => {
       const s = readSettings();
       setHistoryAccount(s.activeSet);
       const u = uploadsUse();
-      return json(res, 200, { name: APP_NAME, settings: s, sets: allSets(s), platforms: appPlatformIds().map((id) => ({ id, label: PLATFORMS[id].label })), batchRunning, uploads: { bytes: u.bytes, files: u.files } });
+      return json(res, 200, {
+        name: APP_NAME, settings: s, sets: allSets(s), platforms: appPlatformIds().map((id) => ({ id, label: PLATFORMS[id].label })), batchRunning, uploads: { bytes: u.bytes, files: u.files },
+        // For the Post screen: each platform's caption limit, and what its website offers for music.
+        captionLimits: CAPTION_LIMITS, music: { help: MUSIC_HELP, note: CREDIT_NOTE },
+      });
     }
     // Delete uploaded copies no batch still needs. The person's own files are never touched.
     if (req.method === "POST" && url.pathname === "/api/uploads/clear") {
@@ -484,10 +527,21 @@ const server = createServer(async (req, res) => {
       closeView(profileFor(req, url));
       return json(res, 200, { ok: true });
     }
+    // The person has finished signing in in the plain window: close it so the app can post again.
+    if (req.method === "POST" && url.pathname === "/api/signin/done") {
+      const profile = profileFor(req, url);
+      await finishSignIn(profile);
+      lastStatus.delete(profile.dir);
+      return json(res, 200, await status(profile));
+    }
     if (req.method === "POST" && url.pathname === "/api/login") {
       if (batchRunning) return json(res, 409, { error: "Posts are going out right now. Connect when they finish." });
       const { platform } = JSON.parse((await readBody(req)).toString() || "{}");
-      await openLogin(platform, profileFor(req, url));
+      if (!isAppPlatform(String(platform))) return json(res, 400, { error: "Unknown platform." });
+      const lp = getPlatform(String(platform));
+      // A plain Chrome window on this set's own profile: Google lets people sign in there, and
+      // Chrome fills in saved passwords. The app never sees what's typed.
+      await openSignIn(profileFor(req, url), lp.id, lp.loginUrl);
       return json(res, 200, { ok: true });
     }
     // --- official sign-in: connect on the platform's own page, choose who to post as ---
@@ -529,10 +583,11 @@ const server = createServer(async (req, res) => {
       if (batchRunning || batchClaimed) return json(res, 409, { error: "Posts are going out right now. Try again when they finish." });
       batchClaimed = true;
       try {
-        const body = await readBody(req);
-        const form = await new Response(new Uint8Array(body), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
-        const file = form.get("video");
-        if (!(file instanceof File) || file.size === 0) return json(res, 400, { error: "pick a video" });
+        // Streamed to disk as it arrives: a phone's multi-GB video never sits in memory.
+        const { form: fields, files } = await takeUpload(req, "video");
+        const file = files.find((f) => f.path && f.size > 0);
+        if (!file) { discard(files); return json(res, 400, { error: "pick a video" }); }
+        const form = { get: (k: string) => one(fields, k), getAll: (k: string) => fields.get(k) ?? [] };
         const dev = deviceKey(req, url);
         const shared = String(form.get("caption") ?? "");
         const asked = parse<{ platform: string; via?: string; identity?: string }[]>(form.get("targets"), form.getAll("platforms").map((p) => ({ platform: String(p) })));
@@ -551,9 +606,7 @@ const server = createServer(async (req, res) => {
           return { platform, via: official ? ("official" as const) : ("browser" as const), identity: official ? want!.id : undefined, identityName: want?.name };
         });
         const finalCaptions = Object.fromEntries(targets.map((t) => [t.platform, withSongCredit(captions[t.platform] ?? shared, t.platform, song)]));
-        mkdirSync(UPLOADS, { recursive: true });
-        const dest = join(UPLOADS, `${Date.now()}${extname(file.name) || ".mp4"}`);
-        writeFileSync(dest, Buffer.from(await file.arrayBuffer()));
+        const dest = file.path;
         const batch = buildBatch({ videos: [{ path: dest, captions: finalCaptions }], platforms: targets.map((t) => t.platform), live: form.get("live") === "on", spaceSec: readSettings().spaceSec, sharedCaption: shared });
         for (const item of batch.items) {
           const t = targets.find((x) => x.platform === item.platform)!;
@@ -613,7 +666,13 @@ const server = createServer(async (req, res) => {
     }
     json(res, 404, { error: "not found" });
   } catch (e) {
-    if (e instanceof TooBig) return json(res, 413, { error: "That's more video than the app can take in one go. Post fewer clips at a time." });
+    if (e instanceof UploadError) {
+      // Stop the sender: a refused 3 GB upload shouldn't keep arriving after the answer.
+      res.setHeader("connection", "close");
+      res.on("finish", () => req.destroy());
+      return json(res, e.status, { error: e.message });
+    }
+    if (e instanceof TooBig) return json(res, 413, { error: "That request was bigger than the app expects here." });
     if (e instanceof SyntaxError) return json(res, 400, { error: "That request wasn't understood." });
     json(res, 500, { error: (e as Error).message.split("\n")[0] });
   }
@@ -621,6 +680,13 @@ const server = createServer(async (req, res) => {
 
 /** Start the dashboard server. The Electron app calls this with open:false and then
  *  loads the URL in its own window; the CLI lets it auto-open in the browser. */
+// Node gives up on any request still arriving after 5 minutes. A 3 GB video from a phone over
+// ordinary Wi-Fi takes longer than that, so there is no overall limit; a connection that goes
+// completely silent is still dropped (headers within a minute, then 10 idle minutes).
+server.requestTimeout = 0;
+server.headersTimeout = 60_000;
+server.setTimeout(10 * 60_000);
+
 export function startServer(
   opts: { port?: number; open?: boolean; host?: string; token?: string } = {},
 ): Promise<{ url: string; port: number }> {

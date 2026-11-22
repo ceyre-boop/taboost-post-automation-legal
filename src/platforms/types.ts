@@ -8,7 +8,15 @@ export interface PostInput {
   /** Called right after the final publish click (live only). Anything that fails after this may
    *  already be posted, so it must not be retried blindly. */
   clicked?: () => void;
+  /** A song to add from the platform's own library, so the post shows it and credits the
+   *  artist. `mute` sets it to 0% so only the video's own sound is heard. Only platforms with
+   *  `addsSongs` act on it. */
+  song?: SongChoice;
+  /** Told what happened to the song, in plain words, for the progress grid. */
+  songNote?: (note: string) => void;
 }
+
+export interface SongChoice { title: string; artist: string; mute: boolean; }
 
 export interface Platform {
   id: string;
@@ -20,6 +28,8 @@ export interface Platform {
   /** True once a dry run has reached the publish screen on a real account.
    *  Unverified adapters still work in dry run but are flagged before going live. */
   verified?: boolean;
+  /** True when its website can add a song from its own library (TikTok Studio can). */
+  addsSongs?: boolean;
   /** True when the current tab's session is signed in. */
   isLoggedIn(page: Page): Promise<boolean>;
   /** Drive the native upload UI. */
