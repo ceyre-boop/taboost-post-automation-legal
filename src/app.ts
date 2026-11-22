@@ -177,7 +177,7 @@ export interface Fix {
 export function explain(note: string, platformLabel: string): Fix {
   const n = note || "";
   const P = platformLabel;
-  if (/not logged in|log ?in again|signed out|session expired/i.test(n)) {
+  if (/not logged in|log ?in again|signed out|session expired|asked for (google )?log ?in/i.test(n)) {
     return { problem: `You're signed out of ${P}.`, fix: `Open Accounts, click Connect next to ${P}, sign in, then press Try again.`, action: "connect" };
   }
   if (/Chrome not found/i.test(n)) {
@@ -189,7 +189,10 @@ export function explain(note: string, platformLabel: string): Fix {
   if (/captcha|verify (it'?s|that) you|are you human|unusual activity|challenge|checkpoint|suspicious/i.test(n)) {
     return { problem: `${P} wants to check it's really you.`, fix: `Finish the check in the app's Chrome window, then press Try again.`, action: "retry" };
   }
-  if (/Video not found|no such file|ENOENT/i.test(n)) {
+  if (/never became clickable/i.test(n)) {
+    return { problem: `${P} was still processing the video`, fix: `Wait a minute, check the ${P} tab in the app's Chrome window, then press Try again`, action: "retry" };
+  }
+  if (/Video not found|no such file|ENOENT|File not found/i.test(n)) {
     return { problem: "The clip file can't be found any more.", fix: "Add the clip again from the Post screen.", action: "add-clip" };
   }
   if (/too (long|large|big)|file size|duration|unsupported|format|codec/i.test(n)) {

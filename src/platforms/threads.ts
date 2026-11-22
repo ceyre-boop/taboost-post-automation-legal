@@ -1,5 +1,7 @@
 import type { Page } from "playwright-core";
 import type { Platform, PostInput } from "./types.ts";
+import { uploadTimeoutMs, waitClickable } from "./timing.ts";
+import { typeCaption } from "./caption.ts";
 import { needle, clickNamed, waitGone } from "./remove.ts";
 
 /** Threads web composer. Threads uses an Instagram-linked login. Best-effort
@@ -8,7 +10,7 @@ export const threads: Platform = {
   id: "threads",
   label: "Threads",
   loginUrl: "https://www.threads.net/login",
-  host: /threads\.(net|com)/,
+  host: /^https:\/\/([a-z0-9-]+\.)*threads\.(net|com)(\/|$)/,
   verified: true, // posted and deleted for real 2026-11-18
 
   async isLoggedIn(page: Page): Promise<boolean> {
@@ -34,25 +36,31 @@ export const threads: Platform = {
     await fileInput.waitFor({ state: "attached", timeout: 30_000 });
     await fileInput.setInputFiles(input.video);
     log("Video handed to the uploader, waiting for processing...");
+    const uploadMs = uploadTimeoutMs(input.video);
 
     if (input.caption) {
       const box = page.locator('[role="dialog"] [contenteditable="true"], [contenteditable="true"][role="textbox"]').first();
       await box.waitFor({ state: "visible", timeout: 30_000 });
       await box.click();
-      await page.keyboard.type(input.caption, { delay: 8 });
+      await typeCaption(page, input.caption, 8);
       log("Text typed.");
     }
 
     const postBtn = page.locator('[role="dialog"]').getByRole("button", { name: "Post", exact: true }).last();
-    await postBtn.waitFor({ state: "visible", timeout: 180_000 });
+    await postBtn.waitFor({ state: "visible", timeout: uploadMs });
+    // Post stays disabled until the video has been taken.
+    await waitClickable(postBtn, "Threads", uploadMs);
 
     if (input.dryRun) {
       log("DRY RUN: thread is composed with the video attached. Not clicking Post.");
       return;
     }
     await postBtn.click({ force: true });
+    input.clicked?.();
     log("Post clicked. Waiting for Threads to confirm...");
-    await page.getByText(/Posted|Your thread/i).first()
+    // Only a toast or alert counts: the typed caption and the feed also contain "Posted".
+    await page.locator('[role="alert"], [role="status"], [aria-live]')
+      .filter({ hasText: /Posted|Your thread/i }).first()
       .waitFor({ state: "visible", timeout: 60_000 })
       .catch(() => { throw new Error("Post clicked but Threads never confirmed. Check the window."); });
     log("Published.");

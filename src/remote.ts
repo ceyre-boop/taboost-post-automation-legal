@@ -11,7 +11,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { networkInterfaces } from "node:os";
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, mkdirSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { launchChrome, killToolChrome } from "./chrome.ts";
 import { startServer } from "./server.ts";
@@ -24,7 +24,7 @@ const TOKEN_FILE = join(APP_DIR, "access-token.txt");  // stable key so the link
 function stableToken(): string {
   try { const t = readFileSync(TOKEN_FILE, "utf8").trim(); if (t) return t; } catch {}
   const t = randomBytes(9).toString("base64url");
-  try { mkdirSync(APP_DIR, { recursive: true }); writeFileSync(TOKEN_FILE, t); } catch {}
+  try { mkdirSync(APP_DIR, { recursive: true }); writeFileSync(TOKEN_FILE, t, { mode: 0o600 }); chmodSync(TOKEN_FILE, 0o600); } catch {}
   return t;
 }
 
@@ -125,22 +125,27 @@ async function main(): Promise<void> {
   const lanUrl = mdns ? `http://${mdns}:${PORT}/m?k=${TOKEN}` : ipUrl;
 
   const announce = (phoneUrl: string, anywhere: boolean) => {
-    try { writeFileSync(URL_FILE, phoneUrl + "\n"); } catch {}
-    try { const p = spawn("pbcopy"); p.stdin.end(phoneUrl); } catch {} // handy on macOS
+    try { writeFileSync(URL_FILE, phoneUrl + "\n", { mode: 0o600 }); chmodSync(URL_FILE, 0o600); } catch {}
+    // Copied to the clipboard only when someone started this by hand: under the boot service
+    // nobody is there to paste it, and the clipboard is shared with the person's other devices.
+    const byHand = !!process.stdout.isTTY;
+    if (byHand) { try { const p = spawn("pbcopy"); p.stdin.end(phoneUrl); } catch {} }
+    // The log file keeps the link without its key.
+    const shown = byHand ? phoneUrl : phoneUrl.replace(/([?&]k=)[^&]+/, "$1(saved in phone-url.txt)");
     box([
       "Northbound Poster is live. Open this on the iPhone:",
       "",
-      phoneUrl,
+      shown,
       "",
-      anywhere ? "Works from anywhere (copied to clipboard — AirDrop/text it)."
-               : "Phone must be on the SAME Wi-Fi (copied to clipboard).",
-      ...(anywhere && lan ? [`Same-Wi-Fi backup: ${lanUrl}`] : []),
-      ...(!anywhere && mdns ? [`(Backup by address, changes with the Wi-Fi: ${ipUrl})`] : []),
+      anywhere ? `Works from anywhere${byHand ? " (copied to clipboard — AirDrop/text it)" : ""}.`
+               : `Phone must be on the SAME Wi-Fi${byHand ? " (copied to clipboard)" : ""}. This link is not encrypted: use it on your own Wi-Fi only.`,
+      ...(anywhere && lan && byHand ? [`Same-Wi-Fi backup: ${lanUrl}`] : []),
+      ...(!anywhere && mdns && byHand ? [`(Backup by address, changes with the Wi-Fi: ${ipUrl})`] : []),
       "",
       "First: connect accounts in the Chrome window that opened,",
       "then refresh the phone page. Keep this running.",
     ]);
-    console.log(`Chrome CDP :${CDP_PORT} · access key ${TOKEN} · current link saved to ${URL_FILE}`);
+    console.log(`Chrome CDP :${CDP_PORT} · current link saved to ${URL_FILE} · new key: run with --new-key`);
     console.log("Press Ctrl-C to stop.\n");
   };
 

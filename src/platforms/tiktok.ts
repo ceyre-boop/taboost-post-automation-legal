@@ -1,5 +1,7 @@
 import type { Page } from "playwright-core";
 import type { Platform, PostInput } from "./types.ts";
+import { uploadTimeoutMs, neverClickable } from "./timing.ts";
+import { typeCaption } from "./caption.ts";
 import { needle, clickNamed, waitGone, postBlock } from "./remove.ts";
 
 const UPLOAD_URL = "https://www.tiktok.com/tiktokstudio/upload";
@@ -23,7 +25,7 @@ export const tiktok: Platform = {
   id: "tiktok",
   label: "TikTok",
   loginUrl: "https://www.tiktok.com/login",
-  host: /tiktok\.com/,
+  host: /^https:\/\/([a-z0-9-]+\.)*tiktok\.com(\/|$)/,
   verified: true,
 
   async isLoggedIn(page: Page): Promise<boolean> {
@@ -41,21 +43,22 @@ export const tiktok: Platform = {
     await fileInput.waitFor({ state: "attached", timeout: 30_000 });
     await fileInput.setInputFiles(input.video);
     log("Video handed to the uploader, waiting for processing...");
+    const uploadMs = uploadTimeoutMs(input.video);
     await dismissModals(page, log);
 
     const editor = page
       .locator('[contenteditable="true"], .public-DraftEditor-content, div[data-e2e="caption-input"] [contenteditable]')
       .first();
-    await editor.waitFor({ state: "visible", timeout: 120_000 });
+    await editor.waitFor({ state: "visible", timeout: uploadMs });
     await dismissModals(page, log);
     await editor.click();
     await page.keyboard.press("Meta+A");
     await page.keyboard.press("Backspace");
-    await page.keyboard.type(input.caption, { delay: 20 });
+    await typeCaption(page, input.caption, 20);
     log("Caption typed.");
 
     const postBtn = page.locator('button[data-e2e="post_video_button"], button:text-is("Post")').first();
-    await postBtn.waitFor({ state: "visible", timeout: 180_000 });
+    await postBtn.waitFor({ state: "visible", timeout: uploadMs });
     // The button stays disabled until TikTok finishes processing the upload.
     await page.waitForFunction(
       (sel) => {
@@ -63,8 +66,8 @@ export const tiktok: Platform = {
         return !!b && !b.disabled && b.getAttribute("aria-disabled") !== "true";
       },
       'button[data-e2e="post_video_button"]',
-      { timeout: 300_000 },
-    );
+      { timeout: uploadMs },
+    ).catch(() => { throw neverClickable("TikTok"); });
 
     await dismissModals(page, log);
     // Give TikTok's copyright / content check up to 90s to finish so we post with a completed check.
@@ -78,6 +81,7 @@ export const tiktok: Platform = {
       return;
     }
     await postBtn.click();
+    input.clicked?.();
     log("Post clicked. Waiting for TikTok to confirm...");
     // If the check is still incomplete TikTok asks "Continue to post?" — answer Post now.
     const postNow = page.locator('[role="dialog"] button, .TUXModal-overlay button').filter({ hasText: /^Post now$/i }).first();

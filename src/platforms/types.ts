@@ -5,6 +5,9 @@ export interface PostInput {
   caption: string;
   /** When true (default) the flow stops right before the final publish click. */
   dryRun: boolean;
+  /** Called right after the final publish click (live only). Anything that fails after this may
+   *  already be posted, so it must not be retried blindly. */
+  clicked?: () => void;
 }
 
 export interface Platform {

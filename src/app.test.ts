@@ -103,3 +103,25 @@ test("sets of accounts: the main one, plus any the person adds, each with its ow
   assert.notEqual(a.port, defaultProfile.port);
   assert.match(a.dir, /accounts\/northbound\/chrome-profile$/);
 });
+
+test("explain recognises every adapter's own signed-out, missing-file and never-clickable messages", () => {
+  const signedOut: [string, string][] = [
+    ["TikTok", "TikTok asked for login. Log in in the Chrome window, then run again."],
+    ["Instagram", "Instagram asked for login. Log in in the Chrome window, then run again."],
+    ["YouTube", "YouTube asked for Google login. Log in in the Chrome window, then run again."],
+    ["X (Twitter)", "X asked for login. Log in in the Chrome window, then run again."],
+    ["Facebook", "Facebook asked for login. Log in in the Chrome window, then run again."],
+    ["LinkedIn", "LinkedIn asked for login. Log in in the Chrome window, then run again."],
+    ["Pinterest", "Pinterest asked for login. Log in in the Chrome window, then run again."],
+    ["Threads", "Threads asked for login (via Instagram). Log in in the Chrome window, then run again."],
+  ];
+  for (const [label, msg] of signedOut) assert.equal(explain(msg, label).action, "connect", msg);
+  assert.equal(explain("locator.setInputFiles: Error: File not found: /tmp/clip.mp4", "TikTok").action, "add-clip");
+  assert.equal(explain("ENOENT: no such file or directory, open '/tmp/clip.mp4'", "TikTok").action, "add-clip");
+  for (const label of ["TikTok", "Instagram", "YouTube", "X (Twitter)", "Facebook", "LinkedIn", "Pinterest", "Threads"]) {
+    const f = explain(`${label}'s Post button never became clickable (the upload may still be processing)`, label);
+    assert.equal(f.action, "retry");
+    assert.equal(f.problem, `${label} was still processing the video`);
+    assert.equal(f.fix, `Wait a minute, check the ${label} tab in the app's Chrome window, then press Try again`);
+  }
+});

@@ -1,6 +1,6 @@
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 
 // Cross-platform per-user data dir. The Electron app sets POSTER_APP_DIR to its own
 // userData path; the CLI falls back to the OS-native location.
@@ -28,7 +28,27 @@ export const ROOT_DIR = defaultAppDir();
 export const APP_DIR = ACCOUNT ? join(ROOT_DIR, "accounts", ACCOUNT) : ROOT_DIR;
 export const PROFILE_DIR = join(APP_DIR, "chrome-profile");
 export const HISTORY_DB = join(APP_DIR, "history.db");
-const portFor = (id: string) => 9300 + [...id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) % 200, 0);
+/** The port a name hashes to. Sets made before ports were saved used this, so it is still
+ *  the first choice for a set (its Chrome keeps the port it already had). */
+export const hashPort = (id: string) => 9300 + [...id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) % 200, 0);
+const PORTS_FILE = join(ROOT_DIR, "set-ports.json");
+/** Each set of accounts gets its own Chrome debugging port, saved, and never shared: two
+ *  sets on one port would share one Chrome and post from the wrong accounts. */
+export function portFor(id: string): number {
+  let saved: Record<string, number> = {};
+  try { saved = JSON.parse(readFileSync(PORTS_FILE, "utf8")); } catch { /* none yet */ }
+  if (saved[id]) return saved[id];
+  const taken = new Set(Object.values(saved));
+  let port = hashPort(id);
+  for (let p = port, n = 0; n < 200; n++, p = 9300 + ((p - 9300 + 1) % 200)) { if (!taken.has(p)) { port = p; break; } }
+  saved[id] = port;
+  try {
+    mkdirSync(ROOT_DIR, { recursive: true });
+    writeFileSync(PORTS_FILE + ".tmp", JSON.stringify(saved, null, 2));
+    renameSync(PORTS_FILE + ".tmp", PORTS_FILE);
+  } catch { /* read-only folder: the port still works for this run */ }
+  return port;
+}
 export const CDP_PORT = Number(process.env.POSTER_CDP_PORT ?? (ACCOUNT ? portFor(ACCOUNT) : 9226));
 
 /** A Chrome profile folder plus the debugging port its Chrome listens on.

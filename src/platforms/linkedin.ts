@@ -1,5 +1,7 @@
 import type { Page } from "playwright-core";
 import type { Platform, PostInput } from "./types.ts";
+import { uploadTimeoutMs, waitClickable } from "./timing.ts";
+import { typeCaption } from "./caption.ts";
 import { needle, clickNamed, waitGone, postBlock } from "./remove.ts";
 
 /** LinkedIn feed post with a video. Best-effort selectors. */
@@ -7,7 +9,7 @@ export const linkedin: Platform = {
   id: "linkedin",
   label: "LinkedIn",
   loginUrl: "https://www.linkedin.com/login",
-  host: /linkedin\.com/,
+  host: /^https:\/\/([a-z0-9-]+\.)*linkedin\.com(\/|$)/,
   verified: true, // posted and deleted for real 2026-11-18
 
   async isLoggedIn(page: Page): Promise<boolean> {
@@ -38,32 +40,36 @@ export const linkedin: Platform = {
       await fileInput.setInputFiles(input.video);
     }
     log("Video handed to the uploader, waiting for processing...");
+    const uploadMs = uploadTimeoutMs(input.video);
 
     // LinkedIn shows a small video editor first; Next returns to the post box.
     const next = page.getByRole("button", { name: "Next", exact: true }).first();
-    await next.waitFor({ state: "visible", timeout: 120_000 });
+    await next.waitFor({ state: "visible", timeout: uploadMs });
     await next.click();
 
     if (input.caption) {
       const box = page.locator('.ql-editor[contenteditable="true"], [role="textbox"][contenteditable="true"]').first();
       await box.waitFor({ state: "visible", timeout: 30_000 });
       await box.click();
-      await page.keyboard.type(input.caption, { delay: 8 });
+      await typeCaption(page, input.caption, 8);
       log("Text typed.");
     }
 
     const postBtn = page.getByRole("button", { name: "Post", exact: true }).first();
-    await postBtn.waitFor({ state: "visible", timeout: 180_000 });
+    await postBtn.waitFor({ state: "visible", timeout: uploadMs });
     // Post stays disabled until the video has finished uploading.
-    for (let i = 0; i < 150 && !(await postBtn.isEnabled().catch(() => false)); i++) await page.waitForTimeout(2000);
+    await waitClickable(postBtn, "LinkedIn", uploadMs);
 
     if (input.dryRun) {
       log("DRY RUN: post is composed with the video attached. Not clicking Post.");
       return;
     }
     await postBtn.click({ force: true });
+    input.clicked?.();
     log("Post clicked. Waiting for LinkedIn to confirm...");
-    await page.getByText(/Post successful|Your post|shared this/i).first()
+    // Only a toast or alert counts: the composer and the feed also contain words like "Your post".
+    await page.locator('.artdeco-toast-item, [data-test-artdeco-toast-item-type], [role="alert"], [role="status"], [aria-live]')
+      .filter({ hasText: /Post successful|Your post (is|was|has been)|View post/i }).first()
       .waitFor({ state: "visible", timeout: 60_000 })
       .catch(() => { throw new Error("Post clicked but LinkedIn never confirmed. Check the window."); });
     log("Published.");

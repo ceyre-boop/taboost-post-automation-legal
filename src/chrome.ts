@@ -45,6 +45,20 @@ function chromeCandidates(): string[] {
   }
 }
 
+/** The --user-data-dir of the Chrome listening on this port, or null if it can't be told. */
+export function chromeProfileOn(port: number): string | null {
+  if (platform() === "win32") return null;
+  try {
+    const pids = spawnSync("lsof", ["-nP", "-t", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" }).stdout.trim().split(/\s+/).filter(Boolean);
+    for (const pid of pids) {
+      const cmd = spawnSync("ps", ["-o", "command=", "-p", pid], { encoding: "utf8" }).stdout;
+      const m = cmd.match(/--user-data-dir=(.+?)(?= --|$)/);
+      if (m) return m[1].trim();
+    }
+  } catch { /* no lsof or ps: can't tell */ }
+  return null;
+}
+
 export function findChrome(): string {
   const found = chromeCandidates().find((p) => existsSync(p));
   if (!found) {
@@ -68,7 +82,13 @@ async function cdpAlive(port: number): Promise<boolean> {
 export async function launchChrome(startUrl: string, profile: Profile = defaultProfile): Promise<void> {
   const { dir, port } = profile;
   ensureDirs(dir);
-  if (await cdpAlive(port)) return;
+  if (await cdpAlive(port)) {
+    // Something answers on this port. Only reuse it if it is this profile's own Chrome:
+    // another set's Chrome would post from the wrong accounts.
+    const owner = chromeProfileOn(port);
+    if (owner === null || owner === dir) return;
+    throw new Error(`Another Chrome window (not this set of accounts) is using port ${port}. Quit the app's other Chrome windows and try again.`);
+  }
   const bin = findChrome();
   const child = spawn(
     bin,

@@ -24,7 +24,7 @@ const W = 1080, H = 1920, FPS = 30, FADE = 0.35;
 const SAFE = { top: 230, bottom: 430, left: 84, right: 170 };
 const FONT = '-apple-system, "SF Pro Display", system-ui, "Helvetica Neue", Arial, sans-serif';
 const params = new URLSearchParams(location.search);
-const q = (path) => `${path}${path.includes('?') ? '&' : '?'}set=${encodeURIComponent(params.get('set') || '')}${params.get('k') ? `&k=${encodeURIComponent(params.get('k'))}` : ''}`;
+const q = (path) => `${path}${path.includes('?') ? '&' : '?'}set=${encodeURIComponent(params.get('set') || '')}${params.get('rk') ? `&rk=${encodeURIComponent(params.get('rk'))}` : ''}`;
 const status = (t) => { document.getElementById('status').textContent = t; };
 
 /* ---------- small drawing helpers ---------- */

@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join, dirname, extname } from "node:path";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { join, dirname, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { APP_DIR, CDP_PORT, accountProfile, defaultProfile, type Profile } from "./config.ts";
@@ -8,7 +8,9 @@ import { getDevice, createDevice, profileOf, type Device } from "./devices.ts";
 import { openView, getView, closeView } from "./remote-view.ts";
 import { withBrowser, pageFor } from "./browser.ts";
 import { PLATFORMS, getPlatform } from "./platforms/index.ts";
-import { buildBatch, runBatch as runBatchEngine, type Batch } from "./batch.ts";
+import { buildBatch, finishedVideos, recoverLatestBatch, runBatch as runBatchEngine, type Batch } from "./batch.ts";
+import { autoTick, makerRoute, markSetConnected } from "./maker/routes.ts";
+import { listMade, saveMade } from "./maker/store.ts";
 import { openHistory, recordPost, setHistoryAccount } from "./history.ts";
 import { APP_NAME, APP_PLATFORMS, addSet, allSets, appPlatformIds, isAppPlatform, cleanSpace, disconnect, displayName, explain, readSettings, uploadName, writeSettings } from "./app.ts";
 
@@ -134,19 +136,63 @@ interface BatchRun { batch: Batch; log: string[]; done: boolean; }
 const batches = new Map<string, BatchRun>();
 let batchRunning = false; // one batch at a time, so spacing is never defeated by overlap
 let lastBatchId = ""; // so a refreshed page can pick its progress grid back up
+/** Live batches that carry a made post: batch id -> the set it belongs to. */
+const madeBatches = new Map<string, string>();
 
-function startBatch(videos: { path: string; caption?: string }[], platformIds: string[], live: boolean, spaceSec: number, sharedCaption: string, profile: Profile = defaultProfile, deleteAfter = false): BatchRun {
+/** A batch has finished (or stopped). Clean up what it no longer needs, and tell any made post how it went. */
+function afterBatch(batch: Batch): void {
+  // Uploaded copies whose posts are all finished are deleted; the person's own file is never touched.
+  for (const v of finishedVideos(batch)) {
+    if (v.startsWith(UPLOADS + sep)) { try { rmSync(v, { force: true }); } catch { /* still in use; cleared later */ } }
+  }
+  const set = madeBatches.get(batch.id);
+  if (set === undefined) return;
+  const p = listMade(set).find((m) => m.batchId === batch.id);
+  if (!p) return;
+  const err = batch.items.find((i) => i.status === "error");
+  const unsure = batch.items.filter((i) => i.status === "unconfirmed");
+  if (err) { p.status = "failed"; p.problem = explain(err.note ?? "", PLATFORMS[err.platform]?.label ?? err.platform).problem + " Press Post again to retry the ones that didn't go out."; }
+  else { p.status = "posted"; p.postedAt = new Date().toISOString(); p.problem = unsure.length ? `Check ${unsure.map((i) => PLATFORMS[i.platform]?.label ?? i.platform).join(" and ")}: the app pressed Post but couldn't see it go up.` : ""; }
+  saveMade(p);
+}
+
+function runEntry(entry: BatchRun, profile: Profile): void {
+  batchRunning = true;
+  entry.done = false;
+  const log = (m: string) => entry.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
+  (async () => {
+    try { await runBatchEngine(entry.batch, log, (b) => { entry.batch = b; }, profile); }
+    catch (e) { log(`ERROR: ${(e as Error).message}`); }
+    finally { entry.done = true; batchRunning = false; try { afterBatch(entry.batch); } catch (e) { console.error("after batch:", (e as Error).message); } }
+  })();
+}
+
+function startBatch(videos: { path: string; caption?: string; captions?: Record<string, string> }[], platformIds: string[], live: boolean, spaceSec: number, sharedCaption: string, profile: Profile = defaultProfile, deleteAfter = false): BatchRun {
   const batch = buildBatch({ videos, platforms: platformIds, live, deleteAfter, spaceSec, sharedCaption });
   const entry: BatchRun = { batch, log: [], done: false };
   batches.set(batch.id, entry);
-  batchRunning = true;
-  const log = (m: string) => entry.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
-  (async () => {
-    try { await runBatchEngine(batch, log, (b) => { entry.batch = b; }, profile); }
-    catch (e) { log(`ERROR: ${(e as Error).message}`); }
-    finally { entry.done = true; batchRunning = false; }
-  })();
+  lastBatchId = batch.id;
+  runEntry(entry, profile);
   return entry;
+}
+
+/** The newest batch from before a restart, with anything that was mid-post marked unconfirmed. */
+try {
+  const recovered = recoverLatestBatch();
+  if (recovered) { batches.set(recovered.id, { batch: recovered, log: [], done: true }); lastBatchId = recovered.id; }
+} catch (e) { console.error("couldn't read the last batch:", (e as Error).message); }
+
+/** The last account check for each Chrome profile, shown while posts are going out
+ *  (a check has to wait for the posting to finish, and the screens shouldn't freeze). */
+const lastStatus = new Map<string, unknown>();
+
+/** Space taken by uploaded copies, and which of them a batch still needs. */
+function uploadsUse(): { bytes: number; files: number; needed: Set<string> } {
+  const needed = new Set<string>();
+  for (const e of batches.values()) for (const i of e.batch.items) if (i.status === "pending" || i.status === "error" || i.status === "posting") needed.add(i.video);
+  let bytes = 0, files = 0;
+  try { for (const f of readdirSync(UPLOADS)) { try { bytes += statSync(join(UPLOADS, f)).size; files++; } catch { /* gone */ } } } catch { /* no uploads yet */ }
+  return { bytes, files, needed };
 }
 
 /** A batch as the app shows it: each clip by the name the person knows, each platform by
@@ -220,17 +266,47 @@ function json(res: ServerResponse, code: number, body: unknown) {
 const MAX_BODY = Number(process.env.POSTER_MAX_UPLOAD_MB ?? 4096) * 1024 * 1024;
 class TooBig extends Error {}
 
-async function readBody(req: IncomingMessage): Promise<Buffer> {
+async function readBody(req: IncomingMessage, limit = MAX_BODY): Promise<Buffer> {
+  const max = Math.min(limit, MAX_BODY);
   const declared = Number(req.headers["content-length"] ?? 0);
-  if (declared > MAX_BODY) throw new TooBig();
+  if (declared > max) throw new TooBig();
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const c of req) {
     size += (c as Buffer).length;
-    if (size > MAX_BODY) throw new TooBig();
+    if (size > max) throw new TooBig();
     chunks.push(c as Buffer);
   }
   return Buffer.concat(chunks);
+}
+
+
+let batchClaimed = false;
+/** Read an upload batch and start it. Called with the one-batch claim held. */
+async function takeBatch(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+  const body = await readBody(req);
+  const form = await new Response(new Uint8Array(body), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
+  const platformIds = form.getAll("platforms").map(String);
+  if (!platformIds.length) return json(res, 400, { error: "pick at least one platform" });
+  try { for (const id of platformIds) getPlatform(id); } // validate before writing any file
+  catch (e) { return json(res, 400, { error: (e as Error).message }); }
+  mkdirSync(UPLOADS, { recursive: true });
+  const all = form.getAll("videos");
+  const videos: { path: string; caption?: string }[] = [];
+  for (let i = 0; i < all.length; i++) {
+    const f = all[i];
+    if (!(f instanceof File) || f.size === 0) continue; // keep the ORIGINAL index so captions stay aligned
+    const dest = join(UPLOADS, uploadName(i, f.name || `clip${extname(f.name) || ".mp4"}`));
+    writeFileSync(dest, Buffer.from(await f.arrayBuffer()));
+    const per = String(form.get(`caption${i}`) ?? "").trim();
+    videos.push({ path: dest, caption: per || undefined });
+  }
+  if (!videos.length) return json(res, 400, { error: "pick at least one video" });
+  // Spacing comes from the form; a blank field means the saved setting (on by default).
+  const rawSpace = form.get("space");
+  const spaceSec = rawSpace === null || String(rawSpace).trim() === "" ? readSettings().spaceSec : cleanSpace(rawSpace);
+  const entry = startBatch(videos, platformIds, form.get("live") === "on", spaceSec, String(form.get("caption") ?? ""), profileFor(req, url), form.get("deleteAfter") === "on");
+  return json(res, 200, { id: entry.batch.id });
 }
 
 setHistoryAccount(readSettings().activeSet); // history rows carry the set they went out from
@@ -251,6 +327,28 @@ const server = createServer(async (req, res) => {
     if (!authorized(req, url)) return json(res, 401, { error: "Unauthorized — this link needs its access key." });
     const allowed = allowedRequest(req, PORT, !!ACCESS_TOKEN);
     if (!allowed.ok) return json(res, 403, { error: allowed.why });
+    if (ACCESS_TOKEN) {
+      // Phone-link mode. The link's key alone isn't enough: every request must come from a
+      // phone that registered (entered its name), so it can only ever reach that phone's own
+      // Chrome profile, never the Mac's accounts. The post maker isn't offered here.
+      if (url.pathname === "/render" || url.pathname.startsWith("/api/maker") || url.pathname.startsWith("/vendor/")) return json(res, 404, { error: "not found" });
+      if (url.pathname.startsWith("/api/") && url.pathname !== "/api/device" && !deviceFor(req, url)) return json(res, 401, { error: "This phone isn't registered. Reopen the link and enter your name." });
+    } else {
+      const ctx = {
+        set: readSettings().activeSet, port: PORT,
+        platforms: appPlatformIds().map((id) => ({ id, label: PLATFORMS[id].label })),
+        json: (code: number, body: unknown) => json(res, code, body),
+        readBody: (limit?: number) => readBody(req, limit),
+        batchRunning: () => batchRunning,
+        startPost: (video: string, captions: Record<string, string>, platforms: string[], live: boolean, deleteAfter: boolean) => {
+          const set = readSettings().activeSet;
+          const entry = startBatch([{ path: video, captions }], platforms, live, readSettings().spaceSec, "", accountProfile(set), deleteAfter);
+          if (live) madeBatches.set(entry.batch.id, set);
+          return entry.batch.id;
+        },
+      };
+      if (await makerRoute(req, res, url, ctx)) return;
+    }
     if (req.method === "GET" && url.pathname === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": PAGE_CSP, ...SECURITY_HEADERS });
       return res.end(dashboardHtml());
@@ -260,7 +358,15 @@ const server = createServer(async (req, res) => {
       return res.end(mobileHtml());
     }
     if (req.method === "GET" && url.pathname === "/api/status") {
-      try { return json(res, 200, await status(profileFor(req, url))); }
+      const profile = profileFor(req, url);
+      if (batchRunning && lastStatus.has(profile.dir)) { res.setHeader("x-poster-busy", "1"); return json(res, 200, lastStatus.get(profile.dir)); }
+      try {
+        const s = await status(profile);
+        lastStatus.set(profile.dir, s);
+        // The first time any account in this set is connected, its 24 hours before auto-make start.
+        if (!ACCESS_TOKEN && Object.values(s).some((x) => x.loggedIn)) markSetConnected(readSettings().activeSet);
+        return json(res, 200, s);
+      }
       catch (e) {
         // The one setup problem a new person can hit: no Chrome. Say so in a way the page can act on.
         const msg = (e as Error).message;
@@ -271,7 +377,16 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/app") {
       const s = readSettings();
       setHistoryAccount(s.activeSet);
-      return json(res, 200, { name: APP_NAME, settings: s, sets: allSets(s), platforms: appPlatformIds().map((id) => ({ id, label: PLATFORMS[id].label })), batchRunning });
+      const u = uploadsUse();
+      return json(res, 200, { name: APP_NAME, settings: s, sets: allSets(s), platforms: appPlatformIds().map((id) => ({ id, label: PLATFORMS[id].label })), batchRunning, uploads: { bytes: u.bytes, files: u.files } });
+    }
+    // Delete uploaded copies no batch still needs. The person's own files are never touched.
+    if (req.method === "POST" && url.pathname === "/api/uploads/clear") {
+      const u = uploadsUse();
+      let removed = 0;
+      try { for (const f of readdirSync(UPLOADS)) { const p = join(UPLOADS, f); if (!u.needed.has(p)) { rmSync(p, { force: true }); removed++; } } } catch { /* nothing there */ }
+      const after = uploadsUse();
+      return json(res, 200, { removed, bytes: after.bytes, files: after.files });
     }
     if (req.method === "POST" && url.pathname === "/api/settings") {
       // Only the plain preferences are set here; sets have their own routes below.
@@ -309,9 +424,10 @@ const server = createServer(async (req, res) => {
     }
     // --- sign in from the phone: stream the Mac's login page, replay taps/typing ---
     if (req.method === "POST" && url.pathname === "/api/remote/open") {
+      if (batchRunning) return json(res, 409, { error: "Posts are going out right now. Sign in when they finish." });
       const { platform } = JSON.parse((await readBody(req)).toString() || "{}");
       const p = getPlatform(String(platform));
-      await openView(profileFor(req, url), p.loginUrl);
+      await openView(profileFor(req, url), p.loginUrl, p.id);
       return json(res, 200, { ok: true });
     }
     if (req.method === "GET" && url.pathname === "/api/remote/stream") {
@@ -338,6 +454,7 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (req.method === "POST" && url.pathname === "/api/login") {
+      if (batchRunning) return json(res, 409, { error: "Posts are going out right now. Connect when they finish." });
       const { platform } = JSON.parse((await readBody(req)).toString() || "{}");
       await openLogin(platform, profileFor(req, url));
       return json(res, 200, { ok: true });
@@ -360,31 +477,9 @@ const server = createServer(async (req, res) => {
       return job ? json(res, 200, job) : json(res, 404, { error: "no such job" });
     }
     if (req.method === "POST" && url.pathname === "/api/batch") {
-      if (batchRunning) return json(res, 409, { error: "A batch is already running — wait for it to finish." });
-      const body = await readBody(req);
-      const form = await new Response(new Uint8Array(body), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
-      const platformIds = form.getAll("platforms").map(String);
-      if (!platformIds.length) return json(res, 400, { error: "pick at least one platform" });
-      try { for (const id of platformIds) getPlatform(id); } // validate before writing any file
-      catch (e) { return json(res, 400, { error: (e as Error).message }); }
-      mkdirSync(UPLOADS, { recursive: true });
-      const all = form.getAll("videos");
-      const videos: { path: string; caption?: string }[] = [];
-      for (let i = 0; i < all.length; i++) {
-        const f = all[i];
-        if (!(f instanceof File) || f.size === 0) continue; // keep the ORIGINAL index so captions stay aligned
-        const dest = join(UPLOADS, uploadName(i, f.name || `clip${extname(f.name) || ".mp4"}`));
-        writeFileSync(dest, Buffer.from(await f.arrayBuffer()));
-        const per = String(form.get(`caption${i}`) ?? "").trim();
-        videos.push({ path: dest, caption: per || undefined });
-      }
-      if (!videos.length) return json(res, 400, { error: "pick at least one video" });
-      // Spacing comes from the form; a blank field means the saved setting (on by default).
-      const rawSpace = form.get("space");
-      const spaceSec = rawSpace === null || String(rawSpace).trim() === "" ? readSettings().spaceSec : cleanSpace(rawSpace);
-      const entry = startBatch(videos, platformIds, form.get("live") === "on", spaceSec, String(form.get("caption") ?? ""), profileFor(req, url), form.get("deleteAfter") === "on");
-      lastBatchId = entry.batch.id;
-      return json(res, 200, { id: entry.batch.id });
+      if (batchRunning || batchClaimed) return json(res, 409, { error: "A batch is already running — wait for it to finish." });
+      batchClaimed = true;
+      try { return await takeBatch(req, res, url); } finally { batchClaimed = false; }
     }
     if (req.method === "GET" && url.pathname === "/api/batches/current") {
       const b = lastBatchId ? batches.get(lastBatchId) : undefined;
@@ -394,16 +489,10 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && /^\/api\/batches\/[^/]+\/resume$/.test(url.pathname)) {
       const entry = batches.get(url.pathname.split("/")[3]);
       if (!entry) return json(res, 404, { error: "no such batch" });
-      if (batchRunning) return json(res, 409, { error: "Posts are already going out. Wait for them to finish." });
-      entry.done = false;
-      batchRunning = true;
-      const log = (m: string) => entry.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
-      const profile = profileFor(req, url);
-      (async () => {
-        try { await runBatchEngine(entry.batch, log, (b) => { entry.batch = b; }, profile); }
-        catch (e) { log(`ERROR: ${(e as Error).message}`); }
-        finally { entry.done = true; batchRunning = false; }
-      })();
+      if (batchRunning || batchClaimed) return json(res, 409, { error: "Posts are already going out. Wait for them to finish." });
+      if (!entry.batch.items.some((i) => i.status === "error" || i.status === "pending")) return json(res, 400, { error: "Nothing here needs trying again. Posts marked \"check\" may already be up, so the app won't post them twice." });
+      lastBatchId = entry.batch.id;
+      runEntry(entry, profileFor(req, url));
       return json(res, 200, { id: entry.batch.id });
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/batches/")) {
@@ -440,7 +529,10 @@ export function startServer(
   if (opts.port) PORT = opts.port;
   if (opts.token !== undefined) ACCESS_TOKEN = opts.token;
   const host = opts.host || "127.0.0.1";
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
+    // On a Mac, one program on 0.0.0.0:4747 and another on 127.0.0.1:4747 can both listen,
+    // and then two apps drive the same Chrome. Ask first: if anything answers, the port is taken.
+    if (await answersOn(PORT)) return reject(Object.assign(new Error(`port ${PORT} is in use`), { code: "EADDRINUSE" }));
     const onErr = (e: Error) => { server.removeListener("error", onErr); reject(e); };
     server.once("error", onErr);
     server.listen(PORT, host, () => {
@@ -451,8 +543,39 @@ export function startServer(
         spawn("open", [u], { stdio: "ignore" }).unref();
       }
       resolve({ url: u, port: PORT });
+      startAutoMake();
     });
   });
+}
+
+async function answersOn(port: number): Promise<boolean> {
+  try { await fetch(`http://127.0.0.1:${port}/logo.png`, { signal: AbortSignal.timeout(800) }); return true; } catch { return false; }
+}
+
+/** Is Post Everywhere itself (this Mac's dashboard, not the phone service) on that port? */
+async function ourAppOn(port: number): Promise<boolean> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/api/app`, { signal: AbortSignal.timeout(1500) });
+    return r.ok && ((await r.json()) as { name?: string }).name === APP_NAME;
+  } catch { return false; }
+}
+
+/** Auto-make, for the set the app is on, checked every 10 minutes. Never in phone-link mode. */
+let autoTimer: ReturnType<typeof setInterval> | null = null;
+function startAutoMake(): void {
+  if (autoTimer || ACCESS_TOKEN) return;
+  autoTimer = setInterval(() => {
+    const set = readSettings().activeSet;
+    void autoTick(set, PORT, {
+      batchRunning: () => batchRunning || batchClaimed,
+      startPost: (video, captions, platforms, live, deleteAfter) => {
+        const entry = startBatch([{ path: video, captions }], platforms, live, readSettings().spaceSec, "", accountProfile(set), deleteAfter);
+        if (live) madeBatches.set(entry.batch.id, set);
+        return entry.batch.id;
+      },
+    }).catch((e) => console.error("[auto-make]", String((e as Error).message ?? e).split("\n")[0]));
+  }, 10 * 60_000);
+  autoTimer.unref();
 }
 
 // Run directly from the CLI (`node src/server.ts`), but not when imported by the app.
@@ -460,4 +583,25 @@ const invokedDirectly = (() => {
   try { return process.argv[1] ? fileURLToPath(import.meta.url) === process.argv[1] : false; }
   catch { return false; }
 })();
-if (invokedDirectly) startServer();
+if (invokedDirectly) {
+  // Port taken? If it's this app already, open it. Otherwise use the next free port and say so.
+  (async () => {
+    const first = PORT;
+    for (let port = first; port <= first + 13; port++) {
+      try {
+        await startServer({ port });
+        if (port !== first) console.log(`Port ${first} is used by another program, so ${APP_NAME} is on ${port}.`);
+        return;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EADDRINUSE") throw e;
+        if (await ourAppOn(port)) {
+          console.log(`${APP_NAME} is already running at http://127.0.0.1:${port}. Opening it.`);
+          if (!process.argv.includes("--no-open")) spawn("open", [`http://127.0.0.1:${port}`], { stdio: "ignore" }).unref();
+          process.exit(0);
+        }
+      }
+    }
+    console.error(`${APP_NAME} couldn't start: ports ${first} to ${first + 13} are all in use.`);
+    process.exit(1);
+  })().catch((e) => { console.error(`${APP_NAME} couldn't start: ${(e as Error).message}`); process.exit(1); });
+}

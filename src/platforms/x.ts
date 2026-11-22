@@ -1,5 +1,7 @@
 import type { Page } from "playwright-core";
 import type { Platform, PostInput } from "./types.ts";
+import { uploadTimeoutMs, neverClickable } from "./timing.ts";
+import { typeCaption, fitX } from "./caption.ts";
 import { needle, clickNamed, waitGone } from "./remove.ts";
 
 /** X (Twitter) web composer. X exposes stable data-testid hooks, so this is the
@@ -8,7 +10,7 @@ export const x: Platform = {
   id: "x",
   label: "X (Twitter)",
   loginUrl: "https://x.com/login",
-  host: /(x|twitter)\.com/,
+  host: /^https:\/\/([a-z0-9-]+\.)*(x|twitter)\.com(\/|$)/,
   verified: true, // posted and deleted for real 2026-11-18
 
   async isLoggedIn(page: Page): Promise<boolean> {
@@ -27,32 +29,36 @@ export const x: Platform = {
     await fileInput.waitFor({ state: "attached", timeout: 30_000 });
     await fileInput.setInputFiles(input.video);
     log("Video handed to the uploader, waiting for processing...");
+    const uploadMs = uploadTimeoutMs(input.video);
 
-    const text = input.caption.length > 280 ? input.caption.slice(0, 277) + "…" : input.caption;
+    const fit = fitX(input.caption);
+    const text = fit.text;
     if (text) {
       const box = page.locator('[data-testid="tweetTextarea_0"], [role="textbox"][contenteditable="true"]').first();
       await box.waitFor({ state: "visible", timeout: 30_000 });
       await box.click();
-      await page.keyboard.type(text, { delay: 8 });
-      if (input.caption.length > 280) log("Caption trimmed to X's 280-char limit.");
+      await typeCaption(page, text, 8);
+      if (fit.shortened) log("caption shortened to fit X");
       log("Text typed.");
     }
 
     const postBtn = page.locator('[data-testid="tweetButton"], [data-testid="tweetButtonInline"]').first();
-    await postBtn.waitFor({ state: "visible", timeout: 180_000 });
+    await postBtn.waitFor({ state: "visible", timeout: uploadMs });
     // Button is disabled until the video finishes uploading.
     await page.waitForFunction(() => {
       const b = document.querySelector('[data-testid="tweetButton"],[data-testid="tweetButtonInline"]') as HTMLElement | null;
       return !!b && b.getAttribute("aria-disabled") !== "true";
-    }, undefined, { timeout: 300_000 }).catch(() => {});
+    }, undefined, { timeout: uploadMs }).catch(() => { throw neverClickable("X (Twitter)"); });
 
     if (input.dryRun) {
       log("DRY RUN: post is composed with the video attached. Not clicking Post.");
       return;
     }
     await postBtn.click();
+    input.clicked?.();
     log("Post clicked. Waiting for X to confirm...");
-    await page.getByText(/Your post was sent|Your Tweet was sent/i).first()
+    await page.locator('[data-testid="toast"], [role="alert"], [role="status"]')
+      .filter({ hasText: /Your post was sent|Your Tweet was sent/i }).first()
       .waitFor({ state: "visible", timeout: 60_000 })
       .catch(() => { throw new Error("Post clicked but X never confirmed. Check the window."); });
     log("Published.");

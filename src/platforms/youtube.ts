@@ -1,5 +1,7 @@
 import type { Page } from "playwright-core";
 import type { Platform } from "./types.ts";
+import { uploadTimeoutMs, neverClickable } from "./timing.ts";
+import { typeCaption, youtubeParts } from "./caption.ts";
 import { needle, clickNamed, waitGone } from "./remove.ts";
 
 /** YouTube Studio upload flow. Posts and deletes for real (2026-11-18). */
@@ -7,7 +9,7 @@ export const youtube: Platform = {
   id: "youtube",
   label: "YouTube",
   loginUrl: "https://studio.youtube.com/",
-  host: /youtube\.com/,
+  host: /^https:\/\/([a-z0-9-]+\.)*youtube\.com(\/|$)/,
   verified: true, // posted and deleted for real 2026-11-18
 
   async isLoggedIn(page: Page): Promise<boolean> {
@@ -32,17 +34,18 @@ export const youtube: Platform = {
     await fileInput.waitFor({ state: "attached", timeout: 30_000 });
     await fileInput.setInputFiles(input.video);
     log("Video handed to the uploader...");
+    const uploadMs = uploadTimeoutMs(input.video);
 
-    const [title, ...rest] = input.caption.split("\n");
+    const { title, description } = youtubeParts(input.caption);
     const titleBox = page.locator('#title-textarea #textbox, ytcp-social-suggestions-textbox#title-textarea [contenteditable="true"]').first();
-    await titleBox.waitFor({ state: "visible", timeout: 120_000 });
+    await titleBox.waitFor({ state: "visible", timeout: uploadMs });
     await titleBox.click();
     await page.keyboard.press("Meta+A");
-    await page.keyboard.type((title || "Untitled").slice(0, 100), { delay: 10 });
+    await page.keyboard.type(title, { delay: 10 });
     const descBox = page.locator('#description-textarea #textbox, ytcp-social-suggestions-textbox#description-textarea [contenteditable="true"]').first();
-    if (rest.length && (await descBox.isVisible().catch(() => false))) {
+    if (description && (await descBox.isVisible().catch(() => false))) {
       await descBox.click();
-      await page.keyboard.type(rest.join("\n"), { delay: 10 });
+      await typeCaption(page, description, 10);
     }
     const notForKids = page.locator('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]').first();
     if (await notForKids.isVisible().catch(() => false)) await notForKids.click();
@@ -63,12 +66,13 @@ export const youtube: Platform = {
     await page.waitForFunction(() => {
       const b = document.querySelector("#done-button") as HTMLElement | null;
       return !!b && b.getAttribute("disabled") === null && b.getAttribute("aria-disabled") !== "true";
-    }, undefined, { timeout: 600_000 });
+    }, undefined, { timeout: uploadMs }).catch(() => { throw neverClickable("YouTube"); });
     if (input.dryRun) {
       log(`DRY RUN: visibility set to ${visName}, upload processed. Not clicking Publish.`);
       return;
     }
     await done.click();
+    input.clicked?.();
     log("Publish clicked. Waiting for YouTube to confirm...");
     // Either the "Video published" box appears, or the upload dialog simply closes.
     await Promise.any([

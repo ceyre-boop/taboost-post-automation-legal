@@ -1,5 +1,7 @@
 import type { Page } from "playwright-core";
 import type { Platform, PostInput } from "./types.ts";
+import { uploadTimeoutMs, waitClickable } from "./timing.ts";
+import { typeCaption } from "./caption.ts";
 import { needle, clickNamed, waitGone, postBlock } from "./remove.ts";
 
 /** Facebook feed video post via the web composer. Facebook's DOM is heavily
@@ -8,7 +10,7 @@ export const facebook: Platform = {
   id: "facebook",
   label: "Facebook",
   loginUrl: "https://www.facebook.com/login",
-  host: /facebook\.com/,
+  host: /^https:\/\/([a-z0-9-]+\.)*facebook\.com(\/|$)/,
   verified: true, // posted and deleted for real 2026-11-18
 
   async isLoggedIn(page: Page): Promise<boolean> {
@@ -33,6 +35,7 @@ export const facebook: Platform = {
     await fileInput.waitFor({ state: "attached", timeout: 30_000 });
     await fileInput.setInputFiles(input.video);
     log("Video handed to the uploader, waiting for processing...");
+    const uploadMs = uploadTimeoutMs(input.video);
 
     if (input.caption) {
       // Facebook keeps an older copy of the post box behind the one on screen: the last one is the live one.
@@ -40,30 +43,31 @@ export const facebook: Platform = {
       await box.waitFor({ state: "visible", timeout: 30_000 });
       // Facebook lays its placeholder over the text box, so an ordinary click is intercepted.
       await box.click({ force: true });
-      await page.keyboard.type(input.caption, { delay: 8 });
+      await typeCaption(page, input.caption, 8);
       // Typing can land nowhere without an error, so read the box back before saying so.
       const first = input.caption.split("\n")[0].slice(0, 20);
       if (!(await box.innerText().catch(() => "")).includes(first)) {
         await box.evaluate((el) => (el as HTMLElement).focus());
-        await page.keyboard.type(input.caption, { delay: 8 });
+        await typeCaption(page, input.caption, 8);
       }
       if (!(await box.innerText().catch(() => "")).includes(first)) throw new Error("Facebook's text box did not take the caption.");
       log("Text typed.");
     }
 
     const postBtn = page.locator('[role="dialog"] [aria-label="Post"][role="button"]').last();
-    await postBtn.waitFor({ state: "visible", timeout: 180_000 });
+    await postBtn.waitFor({ state: "visible", timeout: uploadMs });
     // Post is greyed out until Facebook has taken the video.
-    for (let i = 0; i < 150 && (await postBtn.getAttribute("aria-disabled")) === "true"; i++) await page.waitForTimeout(2000);
+    await waitClickable(postBtn, "Facebook", uploadMs);
 
     if (input.dryRun) {
       log("DRY RUN: post is composed with the video attached. Not clicking Post.");
       return;
     }
     await postBtn.click({ force: true });
+    input.clicked?.();
     log("Post clicked. Waiting for Facebook to finish uploading...");
     // The composer dialog closing is the success signal.
-    await page.locator('[role="dialog"]').first().waitFor({ state: "hidden", timeout: 180_000 })
+    await page.locator('[role="dialog"]').last().waitFor({ state: "hidden", timeout: uploadMs })
       .catch(() => { throw new Error("Post clicked but the Facebook composer never closed. Check the window."); });
     log("Published.");
   },

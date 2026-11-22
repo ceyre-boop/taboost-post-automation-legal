@@ -1,5 +1,7 @@
 import type { Page } from "playwright-core";
 import type { Platform, PostInput } from "./types.ts";
+import { uploadTimeoutMs, waitClickable } from "./timing.ts";
+import { typeCaption, cutCodePoints } from "./caption.ts";
 
 /** Pinterest pin-builder video pin. Needs a board selection (defaults to the first).
  *  Best-effort selectors — UNVERIFIED until a dry run. Caption: first line = title. */
@@ -7,7 +9,7 @@ export const pinterest: Platform = {
   id: "pinterest",
   label: "Pinterest",
   loginUrl: "https://www.pinterest.com/login/",
-  host: /pinterest\.com/,
+  host: /^https:\/\/([a-z0-9-]+\.)*pinterest\.com(\/|$)/,
   verified: false,
 
   async isLoggedIn(page: Page): Promise<boolean> {
@@ -24,16 +26,17 @@ export const pinterest: Platform = {
     await fileInput.waitFor({ state: "attached", timeout: 30_000 });
     await fileInput.setInputFiles(input.video);
     log("Video handed to the uploader, waiting for processing...");
+    const uploadMs = uploadTimeoutMs(input.video);
 
     const [title, ...rest] = input.caption.split("\n");
     const titleBox = page.locator('[id*="title"] textarea, textarea[placeholder*="title"], [data-test-id="pin-draft-title"] textarea').first();
     if (await titleBox.isVisible({ timeout: 30_000 }).catch(() => false)) {
       await titleBox.click();
-      await page.keyboard.type((title || "Untitled").slice(0, 100), { delay: 8 });
+      await page.keyboard.type(cutCodePoints(title || "Untitled", 100), { delay: 8 });
     }
     if (rest.length) {
       const descBox = page.locator('[data-test-id="pin-draft-description"] [contenteditable="true"], [contenteditable="true"][aria-label*="description"]').first();
-      if (await descBox.isVisible().catch(() => false)) { await descBox.click(); await page.keyboard.type(rest.join("\n"), { delay: 6 }); }
+      if (await descBox.isVisible().catch(() => false)) { await descBox.click(); await typeCaption(page, rest.join("\n"), 6); }
     }
     log("Title/description filled.");
 
@@ -51,13 +54,15 @@ export const pinterest: Platform = {
     }
 
     const publishBtn = page.getByRole("button", { name: "Publish", exact: true }).first();
-    await publishBtn.waitFor({ state: "visible", timeout: 180_000 });
+    await publishBtn.waitFor({ state: "visible", timeout: uploadMs });
+    await waitClickable(publishBtn, "Pinterest", uploadMs);
 
     if (input.dryRun) {
       log("DRY RUN: pin is ready with the video + a board selected. Not clicking Publish.");
       return;
     }
     await publishBtn.click();
+    input.clicked?.();
     log("Publish clicked. Waiting for Pinterest to confirm...");
     await page.getByText(/Your Pin|Pin published|was published/i).first()
       .waitFor({ state: "visible", timeout: 120_000 })

@@ -12,6 +12,29 @@ export const VIEW_H = 780;
 const MOBILE_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 
+/** The only sites a phone's sign-in view may show, per platform: the platform itself and
+ *  the "Sign in with Google / Apple" pages. Anything else (the Google account, Gmail, Drive)
+ *  closes the view: it is for signing in, not for browsing the Mac's Chrome. */
+const SIGN_IN_HOSTS: Record<string, string[]> = {
+  tiktok: ["tiktok.com"],
+  instagram: ["instagram.com"],
+  youtube: ["youtube.com", "consent.google.com"],
+  x: ["x.com", "twitter.com"],
+  facebook: ["facebook.com"],
+  linkedin: ["linkedin.com"],
+  threads: ["threads.net", "threads.com", "instagram.com"],
+  pinterest: ["pinterest.com"],
+};
+const IDENTITY_HOSTS = ["accounts.google.com", "appleid.apple.com"];
+
+export function signInAllowed(platformId: string, url: string): boolean {
+  if (!url || url === "about:blank" || url.startsWith("data:")) return true;
+  let host = "";
+  try { const u = new URL(url); if (u.protocol !== "https:") return false; host = u.hostname.toLowerCase(); } catch { return false; }
+  const ok = [...(SIGN_IN_HOSTS[platformId] ?? []), ...IDENTITY_HOSTS];
+  return ok.some((h) => host === h || host.endsWith(`.${h}`));
+}
+
 type Listener = (ev: { type: "frame"; data: string } | { type: "info"; url: string; title: string } | { type: "closed" }) => void;
 
 interface Pending { resolve: (v: any) => void; reject: (e: Error) => void; }
@@ -27,7 +50,8 @@ class RemoteView {
   touched = Date.now();
 
   readonly profile: Profile;
-  constructor(profile: Profile) { this.profile = profile; }
+  readonly platformId: string;
+  constructor(profile: Profile, platformId: string) { this.profile = profile; this.platformId = platformId; }
 
   private send(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<any> {
     const id = this.nextId++;
@@ -98,6 +122,8 @@ class RemoteView {
       }
       case "Target.targetInfoChanged": {
         const info = msg.params.targetInfo;
+        // Any of the view's own tabs leaving the sign-in sites ends the view.
+        if (this.stack.some((s) => s.targetId === info.targetId) && !signInAllowed(this.platformId, info.url)) { this.close(); break; }
         if (t && info.targetId === t.targetId) this.emit({ type: "info", url: info.url, title: info.title });
         break;
       }
@@ -171,9 +197,9 @@ class RemoteView {
 // One sign-in view per profile.
 const views = new Map<string, RemoteView>();
 
-export async function openView(profile: Profile, url: string): Promise<RemoteView> {
+export async function openView(profile: Profile, url: string, platformId: string): Promise<RemoteView> {
   views.get(profile.dir)?.close();
-  const v = new RemoteView(profile);
+  const v = new RemoteView(profile, platformId);
   views.set(profile.dir, v);
   try { await v.open(url); }
   catch (e) { v.close(); views.delete(profile.dir); throw e; }

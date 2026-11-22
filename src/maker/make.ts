@@ -47,7 +47,7 @@ export async function renderVideo(baseUrl: string, set: string, id: string, key 
   const browser = await chromium.launchPersistentContext(profile, { executablePath: findChrome(), headless: true, args: ["--mute-audio", "--no-first-run"] });
   try {
     const page = await browser.newPage();
-    const url = `${baseUrl}/render?set=${encodeURIComponent(set)}&id=${encodeURIComponent(id)}${key ? `&k=${encodeURIComponent(key)}` : ""}`;
+    const url = `${baseUrl}/render?set=${encodeURIComponent(set)}&id=${encodeURIComponent(id)}${key ? `&rk=${encodeURIComponent(key)}` : ""}`;
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     const r = await Promise.race([
       page.evaluate(() => (window as unknown as { renderPost: () => Promise<{ seconds: number; bytes: number }> }).renderPost()),
@@ -64,11 +64,13 @@ const running = new Set<string>();
 export const isMaking = () => running.size > 0;
 
 /** Start making a post from one idea. Returns at once; the work continues in the background. */
-export function startMake(set: string, idea: Idea, platforms: string[], baseUrl: string, key = "", auto = false): MadePost {
+/** `keyFor` makes the one-time key the render page must show for this post. */
+export function startMake(set: string, idea: Idea, platforms: string[], baseUrl: string, keyFor: (id: string) => string = () => "", auto = false): MadePost {
   const missing = notReady(set);
   if (missing) throw new AiError(missing, true);
   const brief = readBrief(set)!;
   const p = newMade(set, idea, platforms, auto);
+  const key = keyFor(p.id);
   running.add(p.id);
   void (async () => {
     try {
