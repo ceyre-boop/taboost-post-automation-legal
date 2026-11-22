@@ -37,6 +37,7 @@ test("the client bundle has no developer or Max-plan path in it at all", async (
   assert.deepEqual(hits(clientDir), []);
   const main = readFileSync(join(clientDir, "main.mjs"), "utf8");
   assert.match(main, /FLAVOR\s*=\s*"client"/);
+  assert.match(main, /OFFICIAL\s*=\s*FLAVOR\s*!==\s*"client"/); // official sign-in switched off in the client copy
   assert.match(main, /DEFAULT_AI_MODE\s*=\s*"byo"/);
   assert.match(main, /devProvider\s*=\s*\(\)\s*=>\s*null/);
   // The TABOOST pipeline's model (Colin's own Max-plan work) isn't in the app either. Its pure

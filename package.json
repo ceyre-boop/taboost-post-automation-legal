@@ -11,13 +11,14 @@
     "tip": "node src/weekly/tip-build.ts",
     "weekly:list": "node src/weekly/list.ts",
     "weekly:approve": "node src/weekly/approve.ts",
-    "test": "POSTER_APP_DIR=\"$(mktemp -d)\" node --test src/weekly/weekly.test.ts src/app.test.ts src/devices.test.ts src/security.test.ts src/maker/maker.test.ts src/maker/formats.test.ts src/platforms/platforms.test.ts src/hardening.test.ts src/remote.test.ts src/bundle.test.ts",
+    "test": "POSTER_APP_DIR=\"$(mktemp -d)\" node --test src/weekly/weekly.test.ts src/app.test.ts src/devices.test.ts src/security.test.ts src/maker/maker.test.ts src/maker/formats.test.ts src/platforms/platforms.test.ts src/hardening.test.ts src/remote.test.ts src/bundle.test.ts src/official/official.test.ts",
     "typecheck": "bunx tsc --noEmit",
     "dashboard": "node src/server.ts",
     "remote": "node src/remote.ts",
     "app": "node src/server.ts",
     "build:me": "cd desktop && node build.mjs --flavor=me",
-    "build:client": "cd desktop && node build.mjs --flavor=client"
+    "build:client": "cd desktop && node build.mjs --flavor=client",
+    "connect-check": "node src/official/check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.12.0",

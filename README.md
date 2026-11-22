@@ -4,6 +4,35 @@ Northbound Studio's first automation: add one video, and it goes to every platfo
 
 It was called TABOOST Poster until 2026-11-18. The repo keeps its old name so the published legal pages and download links keep working.
 
+## Official sign-in: Connect on the platform's own page (2026-11-22, branch `official-connect`)
+
+On the phone, **Post to** shows every platform as *Official · <account>*, *The Mac's browser*, or **Connect**. Connect opens the platform's own sign-in in Safari, so saved passwords and Face ID just work, and the phone page updates itself when it's done.
+
+| Platform | How it posts | Choose who | Song |
+|---|---|---|---|
+| YouTube | official upload (resumable; a private test uploads private) | her channel | credit line |
+| Instagram | official Reel; **Creator or Business account linked to a Facebook Page** | each professional account; "Personal account (the Mac's browser)" | credit line, or Instagram's own song attached at 1% |
+| Facebook | official Page Reel (3-90 s; longer is a Page video); a private test leaves a draft | each Page; "My profile (the Mac's browser)" | credit line |
+| TikTok | official upload **to her TikTok inbox as a draft**: she adds the song (volume 0), pastes the caption (one tap copies it), posts | her account | she adds it in TikTok |
+| X, Threads | the Mac's browser, as before | | credit line |
+| LinkedIn | official post on her profile (optional) | | credit line |
+
+Also: **a caption per platform** (counters against each limit, a YouTube title line), **a song** ("🎵 Song by Artist", per platform), and **Private test** (nothing public). Posts run through the batch engine: saved as they go, recovered after a restart, never sent twice.
+
+Posting permissions (OAuth tokens) live only in the macOS Keychain (service `com.northbound.post-everywhere`). No password is ever typed into or kept by the app. Disconnect revokes the permission at the platform.
+
+### Setting it up (once, about an hour)
+
+1. `cp .env.example .env && chmod 600 .env` (git ignores it). You type the values in yourself; never paste them in a chat.
+2. Every developer app below registers the same redirect URI: `https://northbound-dev.com/connect/callback.html`.
+3. **Google (YouTube):** console.cloud.google.com, new project, enable *YouTube Data API v3*. OAuth consent screen: External, add Skyler's Google address as a test user, then **Publish app** (unverified is fine; in Testing mode sign-ins expire every 7 days). Credentials: OAuth client ID, type *Web application*, the redirect URI above. Put the id and secret in `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+4. **Meta (Facebook Pages + Instagram):** developers.facebook.com, Create app, type *Business*, use cases "Manage everything on your Page" and "Instagram (Facebook login)". Facebook Login for Business: add the redirect URI (Strict mode on), create a configuration with `pages_show_list, pages_read_engagement, pages_manage_posts, instagram_basic, instagram_content_publish, business_management`; its id is `META_LOGIN_CONFIG_ID`. App roles: add Skyler as a Tester (she accepts on Facebook). App settings: privacy policy URL. `META_APP_ID` / `META_APP_SECRET`. While the app is in Development mode only people on the app see its posts: switch it to **Live** after the private test.
+5. **TikTok:** developers.tiktok.com, create an app; add *Login Kit* (Web, the redirect URI) and *Content Posting API* with **Upload** only; scopes `user.info.basic`, `video.upload`. Add a sandbox and Skyler as a target user. `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET`. If the sandbox refuses uploads, submit the app for review.
+6. **LinkedIn (optional):** developer.linkedin.com, create an app (needs a Company Page), products *Share on LinkedIn* and *Sign In with OpenID Connect*, the redirect URI. `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET`.
+7. `npm run connect-check` shows what's set (names only), whether the return page answers, and what's connected. Then restart the poster and tap Connect on the phone.
+
+The browser-only accounts sign in at the Mac: `sh scripts/signin.sh --device skyler`.
+
 ## Post Everywhere: the app (2026-11-21)
 
 `bun run app` starts the app at http://127.0.0.1:4747. It is the same posting engine with a front end a non-technical person can use alone:

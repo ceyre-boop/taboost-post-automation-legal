@@ -8,7 +8,14 @@ import { getDevice, createDevice, findDeviceByName, profileOf, type Device } fro
 import { openView, getView, closeView } from "./remote-view.ts";
 import { withBrowser, pageFor } from "./browser.ts";
 import { PLATFORMS, getPlatform } from "./platforms/index.ts";
-import { buildBatch, finishedVideos, recoverLatestBatch, runBatch as runBatchEngine, type Batch } from "./batch.ts";
+import { buildBatch, finishedVideos, recoverLatestBatch, runBatch as runBatchEngine, saveBatch, type Batch } from "./batch.ts";
+import { connectionView, disconnectProvider, finishConnect, PROVIDERS, startConnect, tokensFor } from "./official/oauth.ts";
+import { chooseIdentity, connectionFor, MAC, PROVIDER_OF, targetFor, type Provider } from "./official/connections.ts";
+import { instagramSongs } from "./official/meta.ts";
+import { hasOfficial } from "./official/post.ts";
+import type { Song } from "./official/types.ts";
+import { withSongCredit } from "./platforms/caption.ts";
+import { FLAVOR } from "./flavor.ts";
 import { autoTick, makerRoute, markSetConnected, planTick } from "./maker/routes.ts";
 import { listMade, saveMade } from "./maker/store.ts";
 import { openHistory, recordPost, setHistoryAccount } from "./history.ts";
@@ -69,6 +76,29 @@ function profileFor(req: IncomingMessage, url: URL): Profile {
   const d = getDevice(raw);
   if (!d) throw new Error("This phone isn't registered any more. Reopen the link and enter your name.");
   return profileOf(d);
+}
+
+/** Whose official connections a request uses: the phone's own, or the Mac's. */
+function deviceKey(req: IncomingMessage, url: URL): string { return deviceFor(req, url)?.id ?? MAC; }
+/** The client copy of the app has no official sign-in (it would need Northbound's own app keys). */
+const OFFICIAL = FLAVOR !== "client";
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+const parse = <T>(v: FormDataEntryValue | null, fallback: T): T => { if (typeof v !== "string" || !v.trim()) return fallback; try { return JSON.parse(v) as T; } catch { return fallback; } };
+
+/** The page Safari shows after a platform sends her back: connected, or why not. No key needed: the
+ *  signed one-time state is the proof, and nothing here reveals or changes anything without it. */
+async function finishPage(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+  let title = "Connected", body = "";
+  if (!OFFICIAL) { title = "Not available"; body = "This copy of the app doesn't connect accounts this way."; }
+  else if (url.searchParams.get("error")) { title = "Not connected"; body = `The platform said: ${url.searchParams.get("error_description") || url.searchParams.get("error")}. Go back to the poster and tap Connect to try again.`; }
+  else {
+    try {
+      const r = await finishConnect(String(url.searchParams.get("code") ?? ""), String(url.searchParams.get("state") ?? ""), String(req.headers.host ?? ""));
+      body = `${PROVIDERS[r.provider].label} is connected as ${r.account}. Close this tab and go back to the poster: it has already updated.`;
+    } catch (e) { title = "Not connected"; body = `${(e as Error).message} Go back to the poster and tap Connect to try again.`; }
+  }
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'", ...SECURITY_HEADERS });
+  res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><body style="font:17px/1.5 -apple-system,sans-serif;background:#0d1117;color:#e9ecf2;padding:40px 22px;max-width:520px;margin:auto"><h1 style="font-size:24px">${title === "Connected" ? "✓ " : ""}${esc(title)}</h1><p>${esc(body)}</p></body>`);
 }
 
 async function status(profile: Profile = defaultProfile) {
@@ -324,6 +354,7 @@ const server = createServer(async (req, res) => {
         return res.end(readFileSync(p));
       } catch { return json(res, 404, { error: "no logo" }); }
     }
+    if (req.method === "GET" && url.pathname === "/connect/finish") return await finishPage(req, res, url);
     if (!authorized(req, url)) return json(res, 401, { error: "Unauthorized — this link needs its access key." });
     const allowed = allowedRequest(req, PORT, !!ACCESS_TOKEN);
     if (!allowed.ok) return json(res, 403, { error: allowed.why });
@@ -459,18 +490,84 @@ const server = createServer(async (req, res) => {
       await openLogin(platform, profileFor(req, url));
       return json(res, 200, { ok: true });
     }
+    // --- official sign-in: connect on the platform's own page, choose who to post as ---
+    if (req.method === "GET" && url.pathname === "/api/connections") {
+      return json(res, 200, { official: OFFICIAL, ...(OFFICIAL ? connectionView(deviceKey(req, url)) : { providers: {}, platforms: {} }) });
+    }
+    if (req.method === "POST" && url.pathname === "/api/connect/start") {
+      if (!OFFICIAL) return json(res, 404, { error: "not found" });
+      const { platform } = JSON.parse((await readBody(req, 4096)).toString() || "{}");
+      const provider = PROVIDER_OF[String(platform)] as Provider | undefined;
+      if (!provider) return json(res, 400, { error: "That platform connects through the Mac's browser." });
+      try { return json(res, 200, { url: startConnect(deviceKey(req, url), provider, String(req.headers.host ?? "")) }); }
+      catch (e) { return json(res, 400, { error: (e as Error).message }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/connections/identity") {
+      const { platform, identity } = JSON.parse((await readBody(req, 4096)).toString() || "{}");
+      try { return json(res, 200, chooseIdentity(deviceKey(req, url), String(platform), String(identity))); }
+      catch (e) { return json(res, 400, { error: (e as Error).message }); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/connections/disconnect") {
+      const { provider } = JSON.parse((await readBody(req, 4096)).toString() || "{}");
+      if (!PROVIDERS[String(provider) as Provider]) return json(res, 400, { error: "Unknown account type." });
+      await disconnectProvider(deviceKey(req, url), String(provider) as Provider);
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === "GET" && url.pathname === "/api/instagram/audio") {
+      const dev = deviceKey(req, url);
+      const ig = connectionFor(dev, "instagram");
+      const id = ig?.identities.find((i) => i.id === (url.searchParams.get("identity") || ig.chosen) && i.via === "official");
+      if (!id) return json(res, 400, { error: "Connect a Creator or Business Instagram account to search its songs." });
+      try { return json(res, 200, await instagramSongs(await tokensFor(dev, "meta"), id.id, String(url.searchParams.get("q") ?? ""))); }
+      catch (e) { return json(res, 400, { error: (e as Error).message }); }
+    }
+    /* The phone's post: one video, a caption per platform (or one for all), each platform official or
+       through the Mac's browser and as which account, an optional song credit, an optional private
+       test. It runs through the batch engine: saved as it goes, recovered after a restart, and a post
+       that was sent but not confirmed is never sent again by itself. */
     if (req.method === "POST" && url.pathname === "/api/post") {
-      const body = await readBody(req);
-      const form = await new Response(new Uint8Array(body), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
-      const file = form.get("video");
-      if (!(file instanceof File) || file.size === 0) return json(res, 400, { error: "pick a video" });
-      const platformIds = form.getAll("platforms").map(String);
-      if (!platformIds.length) return json(res, 400, { error: "pick at least one platform" });
-      mkdirSync(UPLOADS, { recursive: true });
-      const dest = join(UPLOADS, `${Date.now()}${extname(file.name) || ".mp4"}`);
-      writeFileSync(dest, Buffer.from(await file.arrayBuffer()));
-      const job = runJob(dest, String(form.get("caption") ?? ""), platformIds, form.get("live") === "on", profileFor(req, url), form.get("deleteAfter") === "on");
-      return json(res, 200, { id: job.id });
+      if (batchRunning || batchClaimed) return json(res, 409, { error: "Posts are going out right now. Try again when they finish." });
+      batchClaimed = true;
+      try {
+        const body = await readBody(req);
+        const form = await new Response(new Uint8Array(body), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
+        const file = form.get("video");
+        if (!(file instanceof File) || file.size === 0) return json(res, 400, { error: "pick a video" });
+        const dev = deviceKey(req, url);
+        const shared = String(form.get("caption") ?? "");
+        const asked = parse<{ platform: string; via?: string; identity?: string }[]>(form.get("targets"), form.getAll("platforms").map((p) => ({ platform: String(p) })));
+        if (!asked.length) return json(res, 400, { error: "pick at least one platform" });
+        try { for (const t of asked) getPlatform(String(t.platform)); } catch (e) { return json(res, 400, { error: (e as Error).message }); }
+        const captions = parse<Record<string, string>>(form.get("captions"), {});
+        const rawSong = parse<Partial<Song> | null>(form.get("song"), null);
+        const song: Song | undefined = rawSong?.title ? { title: String(rawSong.title).slice(0, 120), artist: String(rawSong.artist ?? "").slice(0, 120), credit: rawSong.credit && typeof rawSong.credit === "object" ? Object.fromEntries(Object.entries(rawSong.credit).map(([k, v]) => [k, !!v])) : undefined, igAudioId: rawSong.igAudioId ? String(rawSong.igAudioId).slice(0, 64) : undefined } : undefined;
+        const youtubeTitle = String(form.get("youtubeTitle") ?? "").trim().slice(0, 100);
+        /* As whom each platform posts: official only when connected and that account is one of hers. */
+        const targets = asked.map((t) => {
+          const platform = String(t.platform);
+          const conn = OFFICIAL ? connectionFor(dev, platform) : undefined;
+          const want = t.identity ? conn?.identities.find((i) => i.id === String(t.identity)) : targetFor(dev, platform).identity;
+          const official = !!want && want.via === "official" && hasOfficial(platform) && t.via !== "browser";
+          return { platform, via: official ? ("official" as const) : ("browser" as const), identity: official ? want!.id : undefined, identityName: want?.name };
+        });
+        const finalCaptions = Object.fromEntries(targets.map((t) => [t.platform, withSongCredit(captions[t.platform] ?? shared, t.platform, song)]));
+        mkdirSync(UPLOADS, { recursive: true });
+        const dest = join(UPLOADS, `${Date.now()}${extname(file.name) || ".mp4"}`);
+        writeFileSync(dest, Buffer.from(await file.arrayBuffer()));
+        const batch = buildBatch({ videos: [{ path: dest, captions: finalCaptions }], platforms: targets.map((t) => t.platform), live: form.get("live") === "on", spaceSec: readSettings().spaceSec, sharedCaption: shared });
+        for (const item of batch.items) {
+          const t = targets.find((x) => x.platform === item.platform)!;
+          Object.assign(item, { via: t.via, identity: t.identity, identityName: t.identityName, song: song ? { ...song, igAudioId: item.platform === "instagram" ? song.igAudioId : undefined } : undefined, title: item.platform === "youtube" && youtubeTitle ? youtubeTitle : undefined });
+        }
+        batch.device = dev;
+        batch.test = form.get("test") === "on";
+        saveBatch(batch);
+        const entry: BatchRun = { batch, log: [], done: false };
+        batches.set(batch.id, entry);
+        lastBatchId = batch.id;
+        runEntry(entry, profileFor(req, url));
+        return json(res, 200, { id: batch.id, batch: true });
+      } finally { batchClaimed = false; }
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/jobs/")) {
       const job = jobs.get(url.pathname.split("/").pop()!);
@@ -503,14 +600,14 @@ const server = createServer(async (req, res) => {
       const db = await openHistory();
       if (!db) return json(res, 200, []);
       // History is per set of accounts: you see what went out from the set you're in.
-      const rows = db.prepare("SELECT id, platform, video, caption, status, posted_at FROM posts WHERE account = ? ORDER BY id DESC LIMIT 300").all(readSettings().activeSet);
+      const rows = db.prepare("SELECT id, platform, video, caption, status, posted_at, via, identity, link AS posted_link, song FROM posts WHERE account = ? ORDER BY id DESC LIMIT 300").all(readSettings().activeSet);
       db.close();
       // What happened, in the app's words, with a link to that platform's list of the person's posts.
       return json(res, 200, rows.map((r: any) => {
         const label = PLATFORMS[r.platform]?.label ?? r.platform;
         const failed = String(r.status).startsWith("error");
         const unsure = String(r.status).startsWith("unconfirmed");
-        const kind = r.status === "posted" ? "posted" : r.status === "dry-run" ? "preview" : r.status === "deleted" ? "deleted" : failed ? "failed" : unsure ? "check" : "other";
+        const kind = r.status === "posted" ? "posted" : r.status === "draft" ? "draft" : r.status === "dry-run" ? "preview" : r.status === "deleted" ? "deleted" : failed ? "failed" : unsure ? "check" : "other";
         return { ...r, name: displayName(r.video), label, kind, link: APP_PLATFORMS[r.platform]?.postsUrl ?? "", fix: failed ? explain(String(r.status).replace(/^error:\s*/, ""), label) : unsure ? explain("UNCONFIRMED", label) : null };
       }));
     }
@@ -548,6 +645,9 @@ export function startServer(
     });
   });
 }
+
+/** Stop listening (tests). */
+export function stopServer(): Promise<void> { return new Promise((r) => { server.closeAllConnections?.(); server.close(() => r()); }); }
 
 async function answersOn(port: number): Promise<boolean> {
   try { await fetch(`http://127.0.0.1:${port}/logo.png`, { signal: AbortSignal.timeout(800) }); return true; } catch { return false; }

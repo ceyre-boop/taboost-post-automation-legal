@@ -83,6 +83,21 @@
   .chip.connect{opacity:.7;border-style:dashed}
   .chip.connect .mini{color:var(--pink)}
   .chip .mini{font-size:9px;font-weight:800;color:var(--muted-2);text-transform:uppercase;letter-spacing:.5px}
+  /* ---- accounts, per-platform captions, song (official sign-in, Nov 2026) ---- */
+  .prow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:11px 0;border-top:1px solid var(--card-brd)}
+  .prow:first-child{border-top:0}
+  .pick{width:24px;height:24px;border-radius:7px;border:2px solid var(--card-brd);background:var(--field);display:grid;place-items:center;font-weight:900;color:#000}
+  .pick.on{background:var(--pink);border-color:var(--pink)} .pick.off{opacity:.35}
+  .pname{font-weight:800;font-size:15px} .pstat{font-size:12px;color:var(--muted)} .pstat b{color:var(--ok);font-weight:700}
+  .pact button,.mini-btn{font:700 12.5px/1 -apple-system,sans-serif;padding:9px 12px;border-radius:10px;border:1px solid var(--card-brd);background:var(--field);color:var(--paper)}
+  .pact button.go,.mini-btn.go{background:var(--pink);border-color:var(--pink);color:#000}
+  select,.field{width:100%;background:var(--field);color:var(--paper);border:1px solid var(--card-brd);border-radius:11px;padding:10px 12px;font:inherit;font-size:15px;margin-top:6px}
+  .toggle{display:flex;gap:10px;align-items:center;font-weight:700;font-size:14px;margin-top:10px}
+  .toggle input{width:22px;height:22px;accent-color:var(--pink)}
+  .pcap{margin-top:12px} .pcap label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .cnt{text-align:right;font-size:11px;color:var(--muted-2);margin-top:4px;font-weight:700} .cnt.over{color:#ff6b6b}
+  .songs{margin-top:8px} .songs label{display:flex;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--card-brd);font-size:14px}
+  .note{font-size:12.5px;color:var(--muted);margin-top:8px}
   .refresh{margin-top:4px;width:100%;background:transparent;border:1px solid var(--card-brd);
     color:var(--muted);border-radius:12px;padding:10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
   .refresh:active{background:var(--field)}
@@ -179,15 +194,32 @@
   </div>
 
   <div class="card">
-    <div class="step"><span class="n">2</span><span class="t">Caption</span></div>
-    <textarea id="caption" maxlength="2000" placeholder="Write your caption + #hashtags…"></textarea>
-    <div class="cc" id="cc">0</div>
+    <div class="step"><span class="n">2</span><span class="t">Post to</span></div>
+    <div id="accounts"><div class="skeleton"></div><div class="skeleton"></div></div>
+    <div class="hint" id="chiphint"></div>
   </div>
 
   <div class="card">
-    <div class="step"><span class="n">3</span><span class="t">Post to</span></div>
-    <div class="chips" id="chips"><div class="skeleton"></div><div class="skeleton"></div></div>
-    <div class="hint" id="chiphint"></div>
+    <div class="step"><span class="n">3</span><span class="t">Caption</span></div>
+    <textarea id="caption" maxlength="5000" placeholder="Write your caption + #hashtags…"></textarea>
+    <div class="cc" id="cc">0</div>
+    <label class="toggle"><input type="checkbox" id="perplat"> A different caption for each platform</label>
+    <div id="percap"></div>
+  </div>
+
+  <div class="card">
+    <div class="step"><span class="n">4</span><span class="t">Song (optional)</span></div>
+    <input class="field" id="stitle" placeholder="Song title, e.g. The Final Countdown" maxlength="120" />
+    <input class="field" id="sartist" placeholder="Artist or band, e.g. Europe" maxlength="120" />
+    <div class="note">Adds "🎵 Song by Artist" to your captions, so the artist is credited. It's a courtesy, not a licence.</div>
+    <div class="songs" id="credits"></div>
+    <div id="igsong"></div>
+    <div class="note" id="ttsong" style="display:none">TikTok: when the draft lands in your TikTok inbox, add the song there and set its volume to 0, so only your drums play and TikTok links the song.</div>
+  </div>
+
+  <div class="card">
+    <label class="toggle" style="margin-top:0"><input type="checkbox" id="testmode"> Private test (nothing public)</label>
+    <div class="note">YouTube uploads as private, Facebook saves a draft, TikTok goes to your inbox, Instagram is skipped, and the browser accounts only preview.</div>
   </div>
 
   <div id="prog"></div>
@@ -224,35 +256,134 @@ const q = (extra={}) => new URLSearchParams({ ...(KEY?{k:KEY}:{}), ...(DEV?{d:DE
 const $ = (id) => document.getElementById(id);
 let platforms = [];
 const selected = new Set();
+let touched = false; // after her first tap, a refresh never re-ticks what she unticked
 
 function banner(msg, kind){ const b=$("banner"); if(!msg){b.style.display="none";return;} b.className="banner "+kind; b.textContent=msg; }
 
+const LIMITS = { tiktok:2200, instagram:2200, youtube:5000, x:280, facebook:2200, linkedin:3000, threads:500 };
+const PROVIDER = { youtube:"google", facebook:"meta", instagram:"meta", tiktok:"tiktok", linkedin:"linkedin" };
+let conns = { official:false, providers:{}, platforms:{} };
+const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+
+/** How a platform posts right now: as which account, officially or through the Mac's browser. */
+function how(p){
+  const c = conns.platforms[p.id];
+  const id = c?.identities?.find((i) => i.id === c.chosen);
+  if (id && id.via === "official") return { ready:true, via:"official", name:id.name, conn:c };
+  if (p.loggedIn) return { ready:true, via:"browser", name:id?.name || "", conn:c };
+  return { ready:false, via: id?.via || null, conn:c };
+}
+const canOfficial = (id) => conns.official && PROVIDER[id] && conns.providers[PROVIDER[id]]?.configured;
+
 function renderChips(){
-  const box = $("chips"); box.innerHTML = "";
+  const box = $("accounts"); box.innerHTML = "";
   if(!platforms.length){ box.innerHTML='<div class="hint">No platforms found.</div>'; return; }
   for(const p of platforms){
-    const on = p.loggedIn;
-    const el = document.createElement("div");
-    el.className = "chip " + (on?"on":"connect") + (selected.has(p.id)?" sel":"");
-    el.innerHTML = `<span class="dot"></span><span>${p.label}</span>` +
-      (on ? (p.verified?"":`<span class="mini">beta</span>`) : `<span class="mini">tap to connect</span>`);
-    el.onclick = on
-      ? () => { selected.has(p.id)?selected.delete(p.id):selected.add(p.id); renderChips(); syncPost(); }
-      : () => connect(p.id, p.label);
-    box.appendChild(el);
+    const h = how(p);
+    if (!h.ready) selected.delete(p.id);
+    const row = document.createElement("div"); row.className = "prow";
+    const status = h.ready
+      ? (h.via === "official" ? `<b>✓ Official</b> · ${esc(h.name)}` : `<b>✓</b> The Mac's browser${h.name ? " · " + esc(h.name) : ""}`)
+      : (canOfficial(p.id) ? "Not connected" : "Not signed in");
+    const ids = h.conn?.identities || [];
+    const chooser = ids.length > 1 ? `<select data-pid="${p.id}">${ids.map((i) => `<option value="${esc(i.id)}"${i.id === h.conn.chosen ? " selected" : ""}>${esc(i.name)}</option>`).join("")}</select>` : "";
+    const act = canOfficial(p.id)
+      ? `<button type="button" class="${h.via === "official" ? "" : "go"}" data-connect="${p.id}">${h.conn ? "Reconnect" : "Connect"}</button>`
+      : (h.ready ? "" : `<button type="button" class="go" data-signin="${p.id}">Sign in</button>`);
+    row.innerHTML = `<div class="pick ${selected.has(p.id) ? "on" : ""} ${h.ready ? "" : "off"}" data-pick="${p.id}">${selected.has(p.id) ? "✓" : ""}</div>
+      <div><div class="pname">${esc(p.label)}</div><div class="pstat">${status}</div>${chooser}</div>
+      <div class="pact">${act}</div>`;
+    box.appendChild(row);
   }
-  // refresh control
+  box.querySelectorAll("[data-pick]").forEach((el) => el.onclick = () => {
+    const p = platforms.find((x) => x.id === el.dataset.pick);
+    if (!how(p).ready) return canOfficial(p.id) ? connectOfficial(p.id, p.label) : connect(p.id, p.label);
+    touched = true; selected.has(p.id) ? selected.delete(p.id) : selected.add(p.id); renderChips(); syncPost();
+  });
+  box.querySelectorAll("[data-connect]").forEach((el) => el.onclick = () => { const p = platforms.find((x) => x.id === el.dataset.connect); connectOfficial(p.id, p.label); });
+  box.querySelectorAll("[data-signin]").forEach((el) => el.onclick = () => { const p = platforms.find((x) => x.id === el.dataset.signin); connect(p.id, p.label); });
+  box.querySelectorAll("select[data-pid]").forEach((el) => el.onchange = async () => {
+    const r = await api("/api/connections/identity", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ platform: el.dataset.pid, identity: el.value }) });
+    if (!r.ok) banner((await r.json().catch(()=>({}))).error || "Couldn't switch account.", "err");
+    await loadConnections(); renderChips(); syncPost();
+  });
   const refresh = document.createElement("button");
-  refresh.className = "refresh"; refresh.type = "button";
-  refresh.innerHTML = "↻ Refresh connections";
-  refresh.onclick = loadStatus;
-  box.appendChild(refresh);
-
-  const anyOn = platforms.some(p=>p.loggedIn);
-  $("chiphint").innerHTML = anyOn
-    ? "Green dot = connected. Tap a grey one to sign in to it."
+  refresh.className = "refresh"; refresh.type = "button"; refresh.innerHTML = "↻ Refresh";
+  refresh.onclick = loadStatus; box.appendChild(refresh);
+  $("chiphint").innerHTML = conns.official
+    ? "Connect opens the platform's own sign-in in Safari: your saved passwords and Face ID work there. The Mac's browser is only for your personal Facebook profile, X and Threads."
     : "Tap a platform to sign in to it right here. You only do this once per account.";
+  renderPerCaptions(); renderSong();
 }
+
+/* ---- official sign-in: the platform's own page, in a new Safari tab ---- */
+let connWatch = null;
+async function connectOfficial(id, label){
+  banner("", "");
+  try{
+    const r = await api("/api/connect/start", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ platform:id }) });
+    const j = await r.json(); if(!r.ok) throw new Error(j.error || ("error "+r.status));
+    const w = window.open(j.url, "_blank");
+    if (!w) location.href = j.url;
+    banner(`Sign in to ${label} in the tab that opened, then come back here.`, "ok");
+    const before = JSON.stringify(conns.platforms[id] || null);
+    clearInterval(connWatch);
+    let n = 0;
+    connWatch = setInterval(async () => {
+      if (++n > 240) return clearInterval(connWatch);
+      await loadConnections();
+      if (JSON.stringify(conns.platforms[id] || null) !== before) { clearInterval(connWatch); banner(`${label} connected ✓`, "ok"); renderChips(); syncPost(); }
+    }, 2500);
+  }catch(e){ banner(`Couldn't connect ${label}: ${e.message}`, "err"); }
+}
+async function loadConnections(){ try{ const r = await api("/api/connections"); if (r.ok) conns = await r.json(); }catch{} }
+
+/* ---- a caption per platform ---- */
+const caps = {};
+let ytTitle = "";
+function renderPerCaptions(){
+  const box = $("percap"); const on = $("perplat").checked; box.innerHTML = "";
+  if (!on) return;
+  for (const id of selected){
+    const p = platforms.find((x) => x.id === id); if (!p) continue;
+    if (caps[id] === undefined) caps[id] = $("caption").value;
+    const wrap = document.createElement("div"); wrap.className = "pcap";
+    wrap.innerHTML = `<label>${esc(p.label)}</label>${id === "youtube" ? `<input class="field" data-yt maxlength="100" placeholder="YouTube title (the first line if empty)" value="${esc(ytTitle)}">` : ""}<textarea data-cap="${id}" maxlength="5000"></textarea><div class="cnt" data-cnt="${id}"></div>`;
+    box.appendChild(wrap);
+    const ta = wrap.querySelector("textarea"); ta.value = caps[id];
+    const count = () => { const n = [...ta.value].length, lim = LIMITS[id] || 2200; const c = wrap.querySelector("[data-cnt]"); c.textContent = `${n} / ${lim}${id === "x" ? " (links count as 23)" : ""}`; c.className = "cnt" + (n > lim ? " over" : ""); };
+    ta.oninput = () => { caps[id] = ta.value; count(); }; count();
+    const yt = wrap.querySelector("[data-yt]"); if (yt) yt.oninput = () => { ytTitle = yt.value; };
+  }
+}
+$("perplat").onchange = renderPerCaptions;
+
+/* ---- the song: credit lines, Instagram's own music, TikTok's note ---- */
+const credit = {};
+let igPick = null;
+function renderSong(){
+  const box = $("credits"); box.innerHTML = "";
+  const titled = $("stitle").value.trim();
+  if (titled) for (const id of selected){ const p = platforms.find((x) => x.id === id); if (!p) continue; if (credit[id] === undefined) credit[id] = true;
+    const l = document.createElement("label"); l.innerHTML = `<input type="checkbox" ${credit[id] ? "checked" : ""}> Credit it on ${esc(p.label)}`; l.querySelector("input").onchange = (e) => { credit[id] = e.target.checked; }; box.appendChild(l); }
+  const ig = platforms.find((x) => x.id === "instagram");
+  const igOfficial = ig && selected.has("instagram") && how(ig).via === "official";
+  $("igsong").innerHTML = titled && igOfficial ? `<button type="button" class="mini-btn go" id="igfind" style="margin-top:10px">Find it in Instagram's music</button><div id="igres"></div>${igPick ? `<div class="note">Attached on Instagram: <b>${esc(igPick.title)}</b> by ${esc(igPick.artist)}, at 1% volume (the lowest Instagram allows), so only your sound plays. <a href="#" id="igclear">Remove</a></div>` : ""}` : "";
+  const f = $("igfind"); if (f) f.onclick = findIgSong;
+  const c = $("igclear"); if (c) c.onclick = (e) => { e.preventDefault(); igPick = null; renderSong(); };
+  $("ttsong").style.display = titled && selected.has("tiktok") ? "" : "none";
+}
+async function findIgSong(){
+  const q = `${$("stitle").value} ${$("sartist").value}`.trim();
+  $("igres").innerHTML = '<div class="note">Searching…</div>';
+  try{
+    const r = await api("/api/instagram/audio?" + new URLSearchParams({ q }));
+    const list = await r.json(); if (!r.ok) throw new Error(list.error);
+    $("igres").innerHTML = list.length ? list.map((a, i) => `<label class="songs"><input type="radio" name="igs" value="${i}"> ${esc(a.title)} · ${esc(a.artist)}</label>`).join("") : '<div class="note">Instagram has no version of this song that apps may attach. The credit line still goes in your caption.</div>';
+    $("igres").querySelectorAll("input").forEach((el) => el.onchange = () => { igPick = list[Number(el.value)]; renderSong(); });
+  }catch(e){ $("igres").innerHTML = `<div class="note">Couldn't search: ${esc(e.message)}</div>`; }
+}
+$("stitle").oninput = renderSong; $("sartist").oninput = renderSong;
 
 // ---------- sign in from the phone ----------
 let es = null, watch = null, signingIn = null;
@@ -323,9 +454,10 @@ async function loadStatus(){
     if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error || ("status "+r.status));
     const data = await r.json();
     platforms = Object.entries(data).map(([id,v]) => ({ id, label:v.label, loggedIn:v.loggedIn, verified:v.verified }));
-    for(const p of platforms) if(p.loggedIn) selected.add(p.id);
+    await loadConnections();
+    for(const p of platforms) if(how(p).ready && !touched) selected.add(p.id);
     renderChips(); syncPost();
-  }catch(e){ $("chips").innerHTML=""; banner("Couldn't reach the poster: "+e.message, "err"); }
+  }catch(e){ $("accounts").innerHTML=""; banner("Couldn't reach the poster: "+e.message, "err"); }
 }
 
 $("caption").oninput = () => { $("cc").textContent = $("caption").value.length; };
@@ -356,48 +488,63 @@ function syncPost(){
 
 $("post").onclick = async () => {
   const f = $("file").files[0]; if(!f || !selected.size) return;
+  const over = [...selected].filter((id) => $("perplat").checked && [...(caps[id] ?? "")].length > (LIMITS[id] || 2200));
+  if (over.length) return banner(`Too long for ${over.map((id) => platforms.find((p) => p.id === id)?.label).join(", ")}. Shorten it first.`, "err");
   const b = $("post"); b.disabled = true; b.classList.add("busy"); b.textContent = "Uploading…"; banner("", "");
   const fd = new FormData();
   fd.append("video", f);
   fd.append("caption", $("caption").value);
   fd.append("live", "on");
-  for(const id of selected) fd.append("platforms", id);
+  if ($("testmode").checked) fd.append("test", "on");
+  const targets = [...selected].map((id) => { const p = platforms.find((x) => x.id === id); const h = how(p); return { platform:id, via:h.via, identity: h.via === "official" ? h.conn?.chosen : undefined }; });
+  fd.append("targets", JSON.stringify(targets));
+  if ($("perplat").checked) fd.append("captions", JSON.stringify(Object.fromEntries([...selected].map((id) => [id, caps[id] ?? $("caption").value]))));
+  if (ytTitle.trim()) fd.append("youtubeTitle", ytTitle.trim());
+  const title = $("stitle").value.trim();
+  if (title) fd.append("song", JSON.stringify({ title, artist: $("sartist").value.trim(), credit, igAudioId: igPick?.id }));
   try{
     const r = await api("/api/post", { method:"POST", body: fd });
     const j = await r.json();
     if(!r.ok) throw new Error(j.error || ("error "+r.status));
     b.textContent = "Posting…";
-    pollJob(j.id);
+    pollBatch(j.id);
   }catch(e){ banner("Upload failed: "+e.message, "err"); b.classList.remove("busy"); syncPost(); }
 };
 
-async function pollJob(id){
-  const names = Object.fromEntries(platforms.map(p=>[p.id,p.label]));
-  const draw = (job) => {
+function copyText(t){
+  try { if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(t); return true; } } catch {}
+  const ta = document.createElement("textarea"); ta.value = t; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, t.length); const ok = document.execCommand("copy"); ta.remove(); return ok;
+}
+
+async function pollBatch(id){
+  const b = $("post");
+  const ICON = { done:"✅", draft:"📥", skipped:"⏭", error:"⚠️", unconfirmed:"❔" };
+  const draw = (batch) => {
     const prog = $("prog"); prog.innerHTML = "";
-    const card = document.createElement("div"); card.className="card";
-    for(const pid of selected){
-      const res = job.results[pid];
-      let ic = '<span class="spin"></span>', sub = "posting…";
-      if(res === "posted"){ ic="✅"; sub="posted"; }
-      else if(res === "dry-run"){ ic="✅"; sub="ready (test run)"; }
-      else if(res && String(res).startsWith("error")){ ic="⚠️"; sub=String(res).replace(/^error:\s*/,""); }
-      const row = document.createElement("div"); row.className="row";
-      row.innerHTML = `<span class="ic">${ic}</span><div><div class="nm">${names[pid]||pid}</div><small>${sub}</small></div>`;
+    const card = document.createElement("div"); card.className = "card";
+    for (const it of batch.items){
+      const row = document.createElement("div"); row.className = "row";
+      const sub = it.status === "posting" || it.status === "pending" ? (it.status === "posting" ? "posting…" : "waiting…")
+        : it.status === "done" ? (it.note || (batch.live && !batch.test ? "posted" : "ready (test run)"))
+        : it.status === "draft" ? (it.platform === "tiktok" ? "in your TikTok inbox: add the song (volume 0), paste the caption, post" : (it.note || "saved as a draft"))
+        : it.status === "unconfirmed" ? "sent, but it couldn't confirm: check before posting again"
+        : (it.fix?.problem || it.note || it.status);
+      row.innerHTML = `<span class="ic">${ICON[it.status] || '<span class="spin"></span>'}</span><div><div class="nm">${esc(it.label)}${it.identityName ? ` <small>· ${esc(it.identityName)}</small>` : ""}</div><small>${esc(sub)}</small>${it.link ? ` <small><a href="${esc(it.link)}" target="_blank">open</a></small>` : ""}${it.platform === "tiktok" && it.status === "draft" ? `<div><button type="button" class="mini-btn go" data-copy>Copy TikTok caption</button></div>` : ""}</div>`;
+      const cb = row.querySelector("[data-copy]"); if (cb) cb.onclick = () => { cb.textContent = copyText(it.caption) ? "Copied ✓" : "Copy failed"; };
       card.appendChild(row);
     }
     prog.appendChild(card);
   };
-  const b = $("post");
   const tick = async () => {
     try{
-      const r = await api("/api/jobs/"+id); const job = await r.json();
-      draw(job);
-      if(job.status === "done"){
-        const errs = Object.values(job.results).filter(v=>String(v).startsWith("error")).length;
-        const ok = Object.values(job.results).filter(v=>v==="posted"||v==="dry-run").length;
-        banner(errs ? `Done — ${ok} posted, ${errs} need a look.` : `Posted to all ${ok}! 🎉`, errs?"err":"ok");
-        b.classList.remove("busy"); b.disabled=false; b.textContent="Post another";
+      const r = await api("/api/batches/" + id); const batch = await r.json();
+      draw(batch);
+      if (batch.done){
+        const n = (s) => batch.items.filter((i) => i.status === s).length;
+        const bad = n("error") + n("unconfirmed");
+        banner(bad ? `Done: ${n("done")} posted${n("draft") ? `, ${n("draft")} draft${n("draft") === 1 ? "" : "s"}` : ""}, ${bad} need a look.` : `${batch.test ? "Private test done" : "Posted"}${n("draft") ? ` (${n("draft")} waiting as a draft)` : ""}! 🎉`, bad ? "err" : "ok");
+        b.classList.remove("busy"); b.disabled = false; b.textContent = "Post another";
         b.onclick = () => location.reload();
         return;
       }
