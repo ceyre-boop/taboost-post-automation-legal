@@ -11,13 +11,15 @@
     "tip": "node src/weekly/tip-build.ts",
     "weekly:list": "node src/weekly/list.ts",
     "weekly:approve": "node src/weekly/approve.ts",
-    "test": "node --test src/weekly/weekly.test.ts src/app.test.ts src/devices.test.ts src/security.test.ts",
+    "test": "node --test src/weekly/weekly.test.ts src/app.test.ts src/devices.test.ts src/security.test.ts src/maker/maker.test.ts",
     "typecheck": "bunx tsc --noEmit",
     "dashboard": "node src/server.ts",
     "remote": "node src/remote.ts",
     "app": "node src/server.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.12.0",
+    "mp4-muxer": "5",
     "playwright-core": "^1.52.0",
     "yaml": "2.6.1"
   },

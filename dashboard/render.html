@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Making your video</title>
+<style>
+  html, body { margin: 0; background: #0e1014; color: #eef0f4; font: 15px/1.5 -apple-system, system-ui, sans-serif; }
+  canvas { display: block; width: 270px; height: 480px; margin: 24px auto; border-radius: 12px; }
+  p { text-align: center; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<p id="status">Getting ready…</p>
+<script type="module">
+// The post maker's renderer. The app opens this page in a headless copy of the person's
+// own Chrome, calls window.renderPost(), and gets back an MP4: 1080×1920, 30 fps, H.264
+// video and AAC sound, encoded here with WebCodecs and packed by mp4-muxer (MIT). The
+// music is made here too, by an OfflineAudioContext, so there is nothing licensed in it.
+import { Muxer, ArrayBufferTarget } from '/vendor/mp4-muxer.mjs';
+
+const W = 1080, H = 1920, FPS = 30, FADE = 0.35;
+// Space the platforms' own buttons and captions cover. Text stays out of it.
+const SAFE = { top: 230, bottom: 430, left: 84, right: 170 };
+const FONT = '-apple-system, "SF Pro Display", system-ui, "Helvetica Neue", Arial, sans-serif';
+const params = new URLSearchParams(location.search);
+const q = (path) => `${path}${path.includes('?') ? '&' : '?'}set=${encodeURIComponent(params.get('set') || '')}${params.get('k') ? `&k=${encodeURIComponent(params.get('k'))}` : ''}`;
+const status = (t) => { document.getElementById('status').textContent = t; };
+
+/* ---------- small drawing helpers ---------- */
+const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+function rgba(h, a) { const [r, g, b] = hexToRgb(h); return `rgba(${r},${g},${b},${a})`; }
+function luminance(h) { const [r, g, b] = hexToRgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; }
+function inkOn(h) { return luminance(h) > 0.45 ? '#0e1014' : '#ffffff'; }
+
+function wrap(ctx, text, maxWidth) {
+  const words = text.split(/\s+/).filter(Boolean), lines = [];
+  let line = '';
+  for (const w of words) {
+    const t = line ? `${line} ${w}` : w;
+    if (ctx.measureText(t).width > maxWidth && line) { lines.push(line); line = w; } else line = t;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+/** The largest size, down to `min`, at which `text` fits in `maxLines` lines. */
+function fit(ctx, text, weight, size, min, maxWidth, maxLines) {
+  for (let s = size; s >= min; s -= 4) {
+    ctx.font = `${weight} ${s}px ${FONT}`;
+    const lines = wrap(ctx, text, maxWidth);
+    if (lines.length <= maxLines) return { size: s, lines };
+  }
+  ctx.font = `${weight} ${min}px ${FONT}`;
+  return { size: min, lines: wrap(ctx, text, maxWidth) };
+}
+function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+
+function drawPhoto(ctx, img, local, dur, seed) {
+  if (!img) { ctx.fillStyle = '#1d2128'; ctx.fillRect(0, 0, W, H); return; }
+  const scale = Math.max(W / img.width, H / img.height);
+  const zoom = 1.04 + 0.08 * (local / dur);                   // a slow push in
+  const dir = seed % 2 ? 1 : -1;
+  const w = img.width * scale * zoom, h = img.height * scale * zoom;
+  const x = (W - w) / 2 + dir * 26 * (local / dur), y = (H - h) / 2;
+  ctx.drawImage(img, x, y, w, h);
+  const g = ctx.createLinearGradient(0, 0, 0, H);                // keep white text readable on any photo
+  g.addColorStop(0, 'rgba(0,0,0,0.38)'); g.addColorStop(0.35, 'rgba(0,0,0,0.10)'); g.addColorStop(0.62, 'rgba(0,0,0,0.30)'); g.addColorStop(1, 'rgba(0,0,0,0.72)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+
+function drawHook(ctx, card, local, color) {
+  const maxW = W - SAFE.left - SAFE.right;
+  const { size, lines } = fit(ctx, card.text.toUpperCase(), 900, 132, 84, maxW - 40, 4);
+  const lh = size * 1.12, total = lines.length * lh, top = 760 - total / 2;
+  ctx.textBaseline = 'middle';
+  lines.forEach((line, i) => {
+    const d = ease((local - i * 0.08) / 0.4);
+    const y = top + i * lh + lh / 2 + (1 - d) * 40;
+    const w = ctx.measureText(line).width;
+    ctx.globalAlpha = d;
+    ctx.fillStyle = color; roundRect(ctx, SAFE.left - 6, y - lh / 2 + 6, w + 52, lh - 10, 14); ctx.fill();
+    ctx.fillStyle = inkOn(color); ctx.fillText(line, SAFE.left + 20, y + 4);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawPoint(ctx, card, local, color, index, count) {
+  const maxW = W - SAFE.left - SAFE.right - 80;
+  const { size, lines } = fit(ctx, card.text, 800, 86, 60, maxW, 5);
+  const lh = size * 1.2, pad = 44, boxH = lines.length * lh + pad * 2 + 40;
+  const y0 = H - SAFE.bottom - boxH - 40;
+  const d = ease(local / 0.4);
+  ctx.globalAlpha = d;
+  ctx.fillStyle = 'rgba(14,16,20,0.78)'; roundRect(ctx, SAFE.left, y0 + (1 - d) * 50, W - SAFE.left - SAFE.right, boxH, 28); ctx.fill();
+  ctx.fillStyle = color; roundRect(ctx, SAFE.left, y0 + (1 - d) * 50, 14, boxH, 7); ctx.fill();
+  ctx.font = `700 34px ${FONT}`; ctx.fillStyle = color; ctx.textBaseline = 'top';
+  ctx.fillText(`${index} / ${count}`, SAFE.left + pad, y0 + pad - 6 + (1 - d) * 50);
+  ctx.font = `800 ${size}px ${FONT}`; ctx.fillStyle = '#ffffff';
+  lines.forEach((line, i) => ctx.fillText(line, SAFE.left + pad, y0 + pad + 40 + i * lh + (1 - d) * 50));
+  ctx.globalAlpha = 1;
+}
+
+function drawEnd(ctx, card, local, color, logo, business) {
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, color); g.addColorStop(1, rgba(color, 0.78));
+  ctx.fillStyle = '#0e1014'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const ink = inkOn(color), d = ease(local / 0.5);
+  ctx.globalAlpha = d;
+  let y = 640;
+  if (logo) {
+    const box = 300, s = Math.min(box / logo.width, box / logo.height);
+    const w = logo.width * s, h = logo.height * s;
+    ctx.fillStyle = 'rgba(255,255,255,0.94)'; roundRect(ctx, (W - box - 80) / 2, y - box / 2 - 40, box + 80, box + 80, 40); ctx.fill();
+    ctx.drawImage(logo, (W - w) / 2, y - h / 2, w, h);
+    y += box / 2 + 150;
+  } else y = 820;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const { size, lines } = fit(ctx, card.text, 900, 104, 70, W - SAFE.left - SAFE.right, 3);
+  ctx.fillStyle = ink;
+  lines.forEach((line, i) => ctx.fillText(line, W / 2, y + i * size * 1.12 + (1 - d) * 30));
+  ctx.font = `600 46px ${FONT}`; ctx.globalAlpha = d * 0.85;
+  ctx.fillText(business, W / 2, y + lines.length * size * 1.12 + 70);
+  ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+}
+
+function drawProgress(ctx, t, total, color) {
+  ctx.fillStyle = 'rgba(255,255,255,0.22)'; roundRect(ctx, SAFE.left, 120, W - SAFE.left * 2, 10, 5); ctx.fill();
+  ctx.fillStyle = color; roundRect(ctx, SAFE.left, 120, (W - SAFE.left * 2) * Math.min(1, t / total), 10, 5); ctx.fill();
+}
+
+/* ---------- music, made here: nothing licensed ---------- */
+async function makeMusic(seconds, mood, seed) {
+  const sr = 48000, ctx = new OfflineAudioContext(2, Math.ceil(sr * seconds), sr);
+  const bpm = { upbeat: 112, calm: 84, bold: 124 }[mood] || 112, beat = 60 / bpm;
+  const master = ctx.createGain(); master.gain.value = 0.0001;
+  const comp = ctx.createDynamicsCompressor(); master.connect(comp).connect(ctx.destination);
+  master.gain.setValueAtTime(0.0001, 0); master.gain.exponentialRampToValueAtTime(0.75, 0.6);
+  master.gain.setValueAtTime(0.75, Math.max(0.7, seconds - 1.4)); master.gain.exponentialRampToValueAtTime(0.0001, seconds);
+  const roots = [261.63, 293.66, 246.94, 220.0]; const root = roots[seed % roots.length];
+  const major = [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], minor = [[9, 12, 16], [5, 9, 12], [0, 4, 7], [7, 11, 14]];
+  const prog = mood === 'bold' ? minor : major;
+  const f = (semi) => root * Math.pow(2, semi / 12);
+  const noise = ctx.createBuffer(1, sr / 4, sr); const nd = noise.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  function tone(type, freq, t, dur, vol, attack = 0.005) {
+    const o = ctx.createOscillator(), g = ctx.createGain(); o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function kick(t, vol) {
+    const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.14);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22); o.connect(g).connect(master); o.start(t); o.stop(t + 0.25);
+  }
+  function hat(t, vol) {
+    const s = ctx.createBufferSource(), hp = ctx.createBiquadFilter(), g = ctx.createGain(); s.buffer = noise; hp.type = 'highpass'; hp.frequency.value = 7500;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05); s.connect(hp).connect(g).connect(master); s.start(t); s.stop(t + 0.06);
+  }
+  for (let t = 0, b = 0; t < seconds; t += beat, b++) {
+    const chord = prog[Math.floor(b / 4) % 4];
+    if (mood === 'calm') { if (b % 4 === 0) chord.forEach((s) => tone('sine', f(s), t, beat * 4, 0.05, 0.4)); tone('triangle', f(chord[b % 3] + 12), t, beat * 0.9, 0.035); }
+    else {
+      tone('triangle', f(chord[(b * 2) % 3] + 12), t, beat * 0.45, 0.05); tone('triangle', f(chord[(b * 2 + 1) % 3] + 12), t + beat / 2, beat * 0.45, 0.04);
+      if (b % 2 === 0 || mood === 'bold') kick(t, mood === 'bold' ? 0.55 : 0.42);
+      hat(t + beat / 2, 0.06);
+    }
+    if (b % 2 === 0) tone('sine', f(chord[0]) / 2, t, beat * 1.6, mood === 'calm' ? 0.08 : 0.14, 0.01);
+  }
+  return ctx.startRendering();
+}
+
+/* ---------- the whole video ---------- */
+async function loadImage(url) { const r = await fetch(q(url)); if (!r.ok) throw new Error(`photo ${r.status}`); return createImageBitmap(await r.blob()); }
+
+window.renderPost = async () => {
+  const id = params.get('id');
+  const jr = await fetch(q(`/api/maker/job/${encodeURIComponent(id)}`));
+  if (!jr.ok) throw new Error(`job ${jr.status}`);
+  const job = await jr.json();
+  status('Loading photos…');
+  const images = new Map();
+  for (const c of job.cards) if (c.photo && !images.has(c.photo)) images.set(c.photo, await loadImage(`/api/maker/photo/${encodeURIComponent(c.photo)}`));
+  const logo = job.logo ? await loadImage(`/api/maker/photo/${encodeURIComponent(job.logo)}`) : null;
+
+  const starts = []; let total = 0;
+  for (const c of job.cards) { starts.push(total); total += c.seconds; }
+  const frames = Math.round(total * FPS);
+
+  const vcfg = { codec: 'avc1.640028', width: W, height: H, bitrate: 8_000_000, framerate: FPS };
+  const acfg = { codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 2, bitrate: 160_000 };
+  if (!(await VideoEncoder.isConfigSupported(vcfg)).supported) throw new Error('This Chrome cannot make H.264 video.');
+  const withAudio = (await AudioEncoder.isConfigSupported(acfg)).supported;
+  const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: W, height: H }, audio: withAudio ? { codec: 'aac', numberOfChannels: 2, sampleRate: 48000 } : undefined, fastStart: 'in-memory', firstTimestampBehavior: 'offset' });
+  let failure = null;
+  const ve = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: (e) => { failure = e; } });
+  ve.configure(vcfg);
+
+  const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+  // The incoming card during a crossfade is drawn here first, then laid over at the fade's opacity.
+  const off = new OffscreenCanvas(W, H), octx = off.getContext('2d');
+  let thumb = null;
+  const drawCard = (g, i, local) => {
+    const c = job.cards[i];
+    g.globalAlpha = 1;
+    if (c.kind === 'end') drawEnd(g, c, local, job.color, logo, job.business);
+    else {
+      drawPhoto(g, images.get(c.photo), local, c.seconds, i);
+      if (c.kind === 'hook') drawHook(g, c, local, job.color);
+      else drawPoint(g, c, local, job.color, c.index, c.count);
+    }
+    g.globalAlpha = 1;
+  };
+  for (let n = 0; n < frames; n++) {
+    if (failure) throw failure;
+    const t = n / FPS;
+    let i = starts.findLastIndex((s) => s <= t); if (i < 0) i = 0;
+    const local = t - starts[i];
+    ctx.save(); drawCard(ctx, i, local); ctx.restore();
+    const next = i + 1;
+    if (next < job.cards.length && starts[next] - t < FADE) {
+      octx.save(); drawCard(octx, next, 0); octx.restore();
+      ctx.globalAlpha = 1 - (starts[next] - t) / FADE; ctx.drawImage(off, 0, 0); ctx.globalAlpha = 1;
+    }
+    if (job.cards[i].kind !== 'end') drawProgress(ctx, t, total, job.color);
+    if (!thumb && job.cards[i].kind === 'hook' && local >= 1.1) thumb = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.86));
+    const frame = new VideoFrame(canvas, { timestamp: Math.round((n * 1e6) / FPS), duration: Math.round(1e6 / FPS) });
+    ve.encode(frame, { keyFrame: n % (FPS * 2) === 0 });
+    frame.close();
+    while (ve.encodeQueueSize > 12) await new Promise((r) => ve.addEventListener('dequeue', r, { once: true }));
+    if (n % 30 === 0) status(`Making your video… ${Math.round((n / frames) * 100)}%`);
+  }
+  await ve.flush();
+  if (failure) throw failure;
+
+  if (withAudio) {
+    status('Adding music…');
+    const music = await makeMusic(total, job.mood, job.seed);
+    const ae = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: (e) => { failure = e; } });
+    ae.configure(acfg);
+    const L = music.getChannelData(0), R = music.getChannelData(1), step = 1024;
+    for (let s = 0; s < music.length; s += step) {
+      const n = Math.min(step, music.length - s), data = new Float32Array(n * 2);
+      data.set(L.subarray(s, s + n), 0); data.set(R.subarray(s, s + n), n);
+      ae.encode(new AudioData({ format: 'f32-planar', sampleRate: 48000, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round((s * 1e6) / 48000), data }));
+    }
+    await ae.flush();
+    if (failure) throw failure;
+  }
+  muxer.finalize();
+  const bytes = new Uint8Array(muxer.target.buffer);
+
+  status('Saving…');
+  const up = await fetch(q(`/api/maker/made/${encodeURIComponent(id)}/video`), { method: 'POST', headers: { 'content-type': 'video/mp4' }, body: bytes });
+  if (!up.ok) throw new Error(`save ${up.status}`);
+  if (thumb) await fetch(q(`/api/maker/made/${encodeURIComponent(id)}/thumb`), { method: 'POST', headers: { 'content-type': 'image/jpeg' }, body: thumb });
+  status('Done.');
+  return { seconds: total, bytes: bytes.length, audio: withAudio };
+};
+</script>
+</body>
+</html>
