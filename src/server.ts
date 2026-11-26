@@ -1,8 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync, statSync, renameSync } from "node:fs";
 import { join, dirname, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { KeyLimiter, RateLimiter, clientOf, envInt, safeEqual } from "./guard.ts";
+import { freeBytes, looksLikeVideo, readMultipart, UploadRefused, type Parsed } from "./multipart.ts";
+import { recentlySent, roomToday, maxPostsPerDay } from "./limits.ts";
 import { APP_DIR, CDP_PORT, accountProfile, defaultProfile, type Profile } from "./config.ts";
 import { getDevice, createDevice, findDeviceByName, profileOf, type Device } from "./devices.ts";
 import { openView, getView, closeView } from "./remote-view.ts";
@@ -52,8 +56,11 @@ let ACCESS_TOKEN = process.env.POSTER_ACCESS_TOKEN || "";
 function authorized(req: IncomingMessage, url: URL): boolean {
   if (!ACCESS_TOKEN) return true;
   const given = url.searchParams.get("k") || (req.headers["x-poster-key"] as string) || "";
-  return given === ACCESS_TOKEN;
+  return safeEqual(given, ACCESS_TOKEN);
 }
+/** Wrong-key guesses are counted per client; too many locks that client out (even a right guess). */
+const keyLimiter = new KeyLimiter();
+const requestLimiter = new RateLimiter();
 
 interface Job {
   id: string;
@@ -112,6 +119,19 @@ async function status(profile: Profile = defaultProfile) {
     }
     return out;
   }, "about:blank", profile);
+}
+
+/** Checking the accounts attaches to Chrome. A flood of checks would queue a hundred attaches, so
+ *  checks for one profile share one run, and an answer under 5 seconds old is reused. */
+const statusRuns = new Map<string, { at: number; run: Promise<Awaited<ReturnType<typeof status>>> }>();
+function statusOnce(profile: Profile) {
+  const have = statusRuns.get(profile.dir);
+  if (have && (Date.now() - have.at < 3000)) return have.run;
+  const run = status(profile);
+  const entry = { at: Date.now(), run };
+  statusRuns.set(profile.dir, entry);
+  run.catch(() => { if (statusRuns.get(profile.dir) === entry) statusRuns.delete(profile.dir); });
+  return run;
 }
 
 async function openLogin(platformId: string, profile: Profile = defaultProfile) {
@@ -271,7 +291,18 @@ const SECURITY_HEADERS = {
 const PAGE_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 
 export function allowedRequest(req: IncomingMessage, port: number, remote: boolean): { ok: true } | { ok: false; why: string } {
-  if (remote) return { ok: true };
+  if (remote) {
+    // The key guards remote mode, but a page on another site that somehow learned the key still can't drive it
+    // from a browser: a browser's request names the page it came from, and that must be this server's own address.
+    const origin = req.headers.origin;
+    if (typeof origin === "string" && origin !== "" && origin !== "null") {
+      let from = "";
+      try { from = new URL(origin).host.toLowerCase(); } catch { from = ""; }
+      if (from !== String(req.headers.host ?? "").toLowerCase()) return { ok: false, why: "Only the app's own page can do that." };
+    } else if (origin === "null") return { ok: false, why: "Only the app's own page can do that." };
+    if (String(req.headers["sec-fetch-site"] ?? "") === "cross-site") return { ok: false, why: "Only the app's own page can do that." };
+    return { ok: true };
+  }
   const mine = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]);
   const host = String(req.headers.host ?? "").toLowerCase();
   if (!mine.has(host)) return { ok: false, why: "This address isn't the app's own." };
@@ -293,10 +324,15 @@ function json(res: ServerResponse, code: number, body: unknown) {
 
 /** The most a single request may carry. Videos are big, so this is generous, but it is
  *  not endless: a request is held in memory while it arrives. */
-const MAX_BODY = Number(process.env.POSTER_MAX_UPLOAD_MB ?? 4096) * 1024 * 1024;
+const MAX_BODY = envInt("POSTER_MAX_UPLOAD_MB", 3072) * 1024 * 1024;
+/** Every ordinary request (a few words of JSON) may carry this much and no more. */
+const SMALL_BODY = 1024 * 1024;
+/** Uploaded videos kept on disk at once, and the free space the Mac must keep to itself. */
+const MAX_STORED = envInt("POSTER_MAX_UPLOADS_GB", 10) * 1024 * 1024 * 1024;
+const MIN_FREE = envInt("POSTER_MIN_FREE_GB", 2) * 1024 * 1024 * 1024;
 class TooBig extends Error {}
 
-async function readBody(req: IncomingMessage, limit = MAX_BODY): Promise<Buffer> {
+async function readBody(req: IncomingMessage, limit = SMALL_BODY): Promise<Buffer> {
   const max = Math.min(limit, MAX_BODY);
   const declared = Number(req.headers["content-length"] ?? 0);
   if (declared > max) throw new TooBig();
@@ -311,32 +347,93 @@ async function readBody(req: IncomingMessage, limit = MAX_BODY): Promise<Buffer>
 }
 
 
+/* ---- uploads: stream to disk, check the space, accept only videos, clean up after a failure ---- */
+
+const VIDEO_TYPES: Record<string, string> = { ".mp4": ".mp4", ".mov": ".mov", ".m4v": ".m4v", ".webm": ".webm" };
+/** The extension an upload is stored with: its own if it is a video one, else from its type. Never anything else. */
+function videoExt(filename: string, type: string): string | null {
+  if (type && !type.startsWith("video/") && type !== "application/octet-stream" && type !== "binary/octet-stream") return null;
+  const own = extname(filename).toLowerCase();
+  if (VIDEO_TYPES[own]) return own;
+  if (type === "video/quicktime") return ".mov";
+  if (type === "video/webm") return ".webm";
+  return ".mp4";
+}
+
+/** Half-written uploads from a crash or a dropped connection, and finished ones nothing needs any more. */
+function sweepUploads(maxAgeMs = 60 * 60_000): void {
+  const { needed } = uploadsUse();
+  try {
+    for (const f of readdirSync(UPLOADS)) {
+      const p = join(UPLOADS, f);
+      try { if (Date.now() - statSync(p).mtimeMs > maxAgeMs && (f.startsWith(".part-") || !needed.has(p))) rmSync(p, { force: true }); } catch { /* gone */ }
+    }
+  } catch { /* no uploads yet */ }
+}
+
+/** Refuse before a byte is read if the upload can't fit: the disk or the app's own cap on stored videos. */
+function roomForUpload(req: IncomingMessage): void {
+  const declared = Number(req.headers["content-length"] ?? 0);
+  if (declared > MAX_BODY) throw new UploadRefused(413, "That's more video than the app can take in one go. Post fewer or shorter clips at a time.");
+  sweepUploads();
+  const free = freeBytes(UPLOADS);
+  if (free !== null && free < declared + MIN_FREE) throw new UploadRefused(507, "This Mac doesn't have enough free space for that video right now.");
+  if (uploadsUse().bytes + declared > MAX_STORED) {
+    sweepUploads(0);
+    if (uploadsUse().bytes + declared > MAX_STORED) throw new UploadRefused(507, "The app is holding as many uploaded videos as it will. Wait for the posts to finish, or clear space in Settings.");
+  }
+}
+
+/** Read an upload: videos go to disk as they arrive (under the app's own names), the rest are small fields. */
+async function takeUpload(req: IncomingMessage, field: string, maxFiles: number): Promise<Parsed> {
+  roomForUpload(req);
+  const parsed = await readMultipart(req, {
+    maxTotal: MAX_BODY, maxFile: MAX_BODY, maxFiles,
+    destFor: ({ field: f, filename, type }) => {
+      const ext = f === field ? videoExt(filename, type) : null;
+      return ext ? join(UPLOADS, `.part-${randomBytes(8).toString("hex")}${ext}`) : null;
+    },
+    check: (file, head) => { if (!looksLikeVideo(head)) throw new UploadRefused(415, `"${file.filename.slice(0, 60).replace(/[^\w.\- ()]/g, "_")}" isn't a video file the app can post.`); },
+  });
+  return parsed;
+}
+/** Give a finished upload its permanent name. */
+function keepUpload(partPath: string, index: number, original: string): string {
+  const dest = join(UPLOADS, uploadName(index, original || "clip.mp4").replace(/(\.[^.]*)?$/, extname(partPath)));
+  renameSync(partPath, dest);
+  return dest;
+}
+/** The posts this request would send live, checked against the day's limit (nothing is read from disk for a preview). */
+function checkRoom(platformIds: string[], videos: number, live: boolean): void {
+  if (!live) return;
+  for (const id of platformIds) if (!roomToday(id, videos)) throw new UploadRefused(429, `${PLATFORMS[id]?.label ?? id} has reached today's limit of ${maxPostsPerDay()} posts from this app. It resets at midnight.`);
+}
+
 let batchClaimed = false;
 /** Read an upload batch and start it. Called with the one-batch claim held. */
 async function takeBatch(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-  const body = await readBody(req);
-  const form = await new Response(new Uint8Array(body), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
-  const platformIds = form.getAll("platforms").map(String);
-  if (!platformIds.length) return json(res, 400, { error: "pick at least one platform" });
-  try { for (const id of platformIds) getPlatform(id); } // validate before writing any file
-  catch (e) { return json(res, 400, { error: (e as Error).message }); }
-  mkdirSync(UPLOADS, { recursive: true });
-  const all = form.getAll("videos");
-  const videos: { path: string; caption?: string }[] = [];
-  for (let i = 0; i < all.length; i++) {
-    const f = all[i];
-    if (!(f instanceof File) || f.size === 0) continue; // keep the ORIGINAL index so captions stay aligned
-    const dest = join(UPLOADS, uploadName(i, f.name || `clip${extname(f.name) || ".mp4"}`));
-    writeFileSync(dest, Buffer.from(await f.arrayBuffer()));
-    const per = String(form.get(`caption${i}`) ?? "").trim();
-    videos.push({ path: dest, caption: per || undefined });
-  }
-  if (!videos.length) return json(res, 400, { error: "pick at least one video" });
-  // Spacing comes from the form; a blank field means the saved setting (on by default).
-  const rawSpace = form.get("space");
-  const spaceSec = rawSpace === null || String(rawSpace).trim() === "" ? readSettings().spaceSec : cleanSpace(rawSpace);
-  const entry = startBatch(videos, platformIds, form.get("live") === "on", spaceSec, String(form.get("caption") ?? ""), profileFor(req, url), form.get("deleteAfter") === "on");
-  return json(res, 200, { id: entry.batch.id });
+  const { fields, files } = await takeUpload(req, "videos", 10);
+  const one = (k: string) => fields.get(k)?.[0] ?? null;
+  const dropAll = () => { for (const f of files) rmSync(f.path, { force: true }); };
+  try {
+    const platformIds = [...new Set((fields.get("platforms") ?? []).map(String))];
+    if (!platformIds.length) { dropAll(); return json(res, 400, { error: "pick at least one platform" }); }
+    try { for (const id of platformIds) getPlatform(id); } // validate before keeping any file
+    catch (e) { dropAll(); return json(res, 400, { error: (e as Error).message }); }
+    if (!files.length) return json(res, 400, { error: "pick at least one video" });
+    const live = one("live") === "on";
+    checkRoom(platformIds, files.length, live);
+    const videos: { path: string; caption?: string; sha: string }[] = [];
+    files.forEach((f, i) => {
+      const per = String(one(`caption${i}`) ?? "").trim().slice(0, 5000);
+      videos.push({ path: keepUpload(f.path, i, f.filename), caption: per || undefined, sha: f.sha256 });
+    });
+    // Spacing comes from the form; a blank field means the saved setting (on by default).
+    const rawSpace = one("space");
+    const spaceSec = rawSpace === null || String(rawSpace).trim() === "" ? readSettings().spaceSec : cleanSpace(rawSpace);
+    const entry = startBatch(videos, platformIds, live, spaceSec, String(one("caption") ?? "").slice(0, 5000), profileFor(req, url), one("deleteAfter") === "on");
+    return json(res, 200, { id: entry.batch.id });
+  } catch (e) { dropAll(); throw e; }
 }
 
 setHistoryAccount(readSettings().activeSet); // history rows carry the set they went out from
@@ -355,7 +452,17 @@ const server = createServer(async (req, res) => {
       } catch { return json(res, 404, { error: "no logo" }); }
     }
     if (req.method === "GET" && url.pathname === "/connect/finish") return await finishPage(req, res, url);
-    if (!authorized(req, url)) return json(res, 401, { error: "Unauthorized — this link needs its access key." });
+    if (ACCESS_TOKEN) {
+      const who = clientOf(req);
+      if (keyLimiter.blocked(who)) { res.setHeader("retry-after", "900"); return json(res, 429, { error: "Too many wrong keys from this connection. Try again in a few minutes." }); }
+      if (!authorized(req, url)) {
+        if (keyLimiter.floodActive()) { res.setHeader("retry-after", "60"); return json(res, 429, { error: "Too many wrong keys. Try again in a minute." }); }
+        keyLimiter.fail(who);
+        return json(res, 401, { error: "Unauthorized — this link needs its access key." });
+      }
+      keyLimiter.ok(who);
+      if (!requestLimiter.allow(who)) { res.setHeader("retry-after", "30"); return json(res, 429, { error: "Slow down: too many requests in a minute." }); }
+    }
     const allowed = allowedRequest(req, PORT, !!ACCESS_TOKEN);
     if (!allowed.ok) return json(res, 403, { error: allowed.why });
     if (ACCESS_TOKEN) {
@@ -385,14 +492,14 @@ const server = createServer(async (req, res) => {
       return res.end(dashboardHtml());
     }
     if (req.method === "GET" && (url.pathname === "/m" || url.pathname === "/m/")) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": PAGE_CSP, ...SECURITY_HEADERS });
       return res.end(mobileHtml());
     }
     if (req.method === "GET" && url.pathname === "/api/status") {
       const profile = profileFor(req, url);
       if (batchRunning && lastStatus.has(profile.dir)) { res.setHeader("x-poster-busy", "1"); return json(res, 200, lastStatus.get(profile.dir)); }
       try {
-        const s = await status(profile);
+        const s = await statusOnce(profile);
         lastStatus.set(profile.dir, s);
         // The first time any account in this set is connected, its 24 hours before auto-make start.
         if (!ACCESS_TOKEN && Object.values(s).some((x) => x.loggedIn)) markSetConnected(readSettings().activeSet);
@@ -450,7 +557,9 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/device") {
       const { name } = JSON.parse((await readBody(req)).toString() || "{}");
-      const d = findDeviceByName(String(name ?? "")) ?? createDevice(String(name ?? ""));
+      let d;
+      try { d = findDeviceByName(String(name ?? "")) ?? createDevice(String(name ?? "")); }
+      catch (e) { return json(res, 429, { error: (e as Error).message }); }
       return json(res, 200, { id: d.id, name: d.name });
     }
     // --- sign in from the phone: stream the Mac's login page, replay taps/typing ---
@@ -528,14 +637,20 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/post") {
       if (batchRunning || batchClaimed) return json(res, 409, { error: "Posts are going out right now. Try again when they finish." });
       batchClaimed = true;
+      let saved: string[] = [];
       try {
-        const body = await readBody(req);
-        const form = await new Response(new Uint8Array(body), { headers: { "content-type": req.headers["content-type"] ?? "" } }).formData();
-        const file = form.get("video");
-        if (!(file instanceof File) || file.size === 0) return json(res, 400, { error: "pick a video" });
+        const up = await takeUpload(req, "video", 1);
+        saved = up.files.map((f) => f.path);
+        const file = up.files[0];
+        const get = (k: string): string | null => up.fields.get(k)?.[0] ?? null;
+        const form = { get, getAll: (k: string) => up.fields.get(k) ?? [] };
+        if (!file) return json(res, 400, { error: "pick a video" });
         const dev = deviceKey(req, url);
-        const shared = String(form.get("caption") ?? "");
-        const asked = parse<{ platform: string; via?: string; identity?: string }[]>(form.get("targets"), form.getAll("platforms").map((p) => ({ platform: String(p) })));
+        const shared = String(form.get("caption") ?? "").slice(0, 5000);
+        // The same platform listed twice would post twice; a post goes to a platform once.
+        const askedAll = parse<{ platform: string; via?: string; identity?: string }[]>(form.get("targets"), form.getAll("platforms").map((p) => ({ platform: String(p) })));
+        const seenP = new Set<string>();
+        const asked = (Array.isArray(askedAll) ? askedAll : []).filter((t) => t && typeof t === "object" && !seenP.has(String(t.platform)) && !!seenP.add(String(t.platform))).slice(0, 12);
         if (!asked.length) return json(res, 400, { error: "pick at least one platform" });
         try { for (const t of asked) getPlatform(String(t.platform)); } catch (e) { return json(res, 400, { error: (e as Error).message }); }
         const captions = parse<Record<string, string>>(form.get("captions"), {});
@@ -551,10 +666,16 @@ const server = createServer(async (req, res) => {
           return { platform, via: official ? ("official" as const) : ("browser" as const), identity: official ? want!.id : undefined, identityName: want?.name };
         });
         const finalCaptions = Object.fromEntries(targets.map((t) => [t.platform, withSongCredit(captions[t.platform] ?? shared, t.platform, song)]));
-        mkdirSync(UPLOADS, { recursive: true });
-        const dest = join(UPLOADS, `${Date.now()}${extname(file.name) || ".mp4"}`);
-        writeFileSync(dest, Buffer.from(await file.arrayBuffer()));
-        const batch = buildBatch({ videos: [{ path: dest, captions: finalCaptions }], platforms: targets.map((t) => t.platform), live: form.get("live") === "on", spaceSec: readSettings().spaceSec, sharedCaption: shared });
+        const goingLive = form.get("live") === "on" && form.get("test") !== "on";
+        // The day's limit, and "this exact video and caption already went there a moment ago" (a double tap, a retry).
+        checkRoom(targets.map((t) => t.platform), 1, goingLive);
+        if (goingLive) {
+          const again = targets.find((t) => recentlySent(t.platform, file.sha256, finalCaptions[t.platform] ?? ""));
+          if (again) return json(res, 409, { error: `That same video and caption went to ${PLATFORMS[again.platform]?.label ?? again.platform} a few minutes ago, so it wasn't sent again. Change the caption, or wait half an hour, to post it again.` });
+        }
+        const dest = keepUpload(file.path, 0, file.filename);
+        saved = [dest];
+        const batch = buildBatch({ videos: [{ path: dest, captions: finalCaptions, sha: file.sha256 }], platforms: targets.map((t) => t.platform), live: form.get("live") === "on", spaceSec: readSettings().spaceSec, sharedCaption: shared });
         for (const item of batch.items) {
           const t = targets.find((x) => x.platform === item.platform)!;
           Object.assign(item, { via: t.via, identity: t.identity, identityName: t.identityName, song: song ? { ...song, igAudioId: item.platform === "instagram" ? song.igAudioId : undefined } : undefined, title: item.platform === "youtube" && youtubeTitle ? youtubeTitle : undefined });
@@ -566,8 +687,10 @@ const server = createServer(async (req, res) => {
         batches.set(batch.id, entry);
         lastBatchId = batch.id;
         runEntry(entry, profileFor(req, url));
+        saved = []; // the batch owns the file now
         return json(res, 200, { id: batch.id, batch: true });
-      } finally { batchClaimed = false; }
+      } catch (e) { throw e; }
+      finally { batchClaimed = false; for (const p of saved) rmSync(p, { force: true }); }
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/jobs/")) {
       const job = jobs.get(url.pathname.split("/").pop()!);
@@ -613,11 +736,19 @@ const server = createServer(async (req, res) => {
     }
     json(res, 404, { error: "not found" });
   } catch (e) {
+    if (e instanceof UploadRefused) { res.once("finish", () => req.destroy()); res.setHeader("connection", "close"); return json(res, e.status, { error: e.message }); }
     if (e instanceof TooBig) return json(res, 413, { error: "That's more video than the app can take in one go. Post fewer clips at a time." });
     if (e instanceof SyntaxError) return json(res, 400, { error: "That request wasn't understood." });
     json(res, 500, { error: (e as Error).message.split("\n")[0] });
   }
 });
+
+/* A slow or stalled sender can't hold the server forever, and there is a ceiling on open connections. A big
+ * video over home Wi-Fi can take a while, so a request may take up to 30 minutes, but it must keep moving. */
+server.headersTimeout = 20_000;
+server.requestTimeout = envInt("POSTER_REQUEST_TIMEOUT_MIN", 30) * 60_000;
+server.keepAliveTimeout = 5_000;
+server.maxConnections = envInt("POSTER_MAX_CONNECTIONS", 128);
 
 /** Start the dashboard server. The Electron app calls this with open:false and then
  *  loads the URL in its own window; the CLI lets it auto-open in the browser. */

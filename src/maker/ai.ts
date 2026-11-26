@@ -211,6 +211,29 @@ async function byo(task: Task, system: string, user: string): Promise<Answer> {
   }
 }
 
+/* ---------------- spending limits: they hold however the calls are triggered ---------------- */
+
+/** Most characters (system + user) one call may carry. The brief is capped far below this; the limit is the backstop. */
+export const AI_MAX_INPUT_CHARS = Number(process.env.POSTER_AI_MAX_INPUT_CHARS) > 0 ? Number(process.env.POSTER_AI_MAX_INPUT_CHARS) : 60_000;
+const num = (name: string, fallback: number) => { const n = Number(process.env[name]); return Number.isFinite(n) && n > 0 ? n : fallback; };
+/** Calls and estimated dollars per day, per app folder. Saved to disk: a restart doesn't reset them. */
+export const aiCallsPerDay = () => Math.floor(num("POSTER_AI_MAX_CALLS_PER_DAY", 80));
+export const aiUsdPerDay = () => num("POSTER_AI_MAX_USD_PER_DAY", 5);
+const callsFile = () => join(root(), "ai-calls.json");
+const dayKey = () => new Date().toISOString().slice(0, 10);
+function readCalls(): { day: string; n: number } {
+  try { const c = JSON.parse(readFileSync(callsFile(), "utf8")); if (c.day === dayKey() && Number.isFinite(c.n)) return { day: c.day, n: c.n }; } catch { /* none today */ }
+  return { day: dayKey(), n: 0 };
+}
+/** Count one call (before it is made, so a failing call still counts) or say why it can't be made. */
+export function takeAiCall(chars: number): void {
+  if (chars > AI_MAX_INPUT_CHARS) throw new AiError("That's more text than the AI is sent in one go. Shorten the business details or the idea and try again.");
+  const c = readCalls();
+  if (c.n >= aiCallsPerDay()) throw new AiError(`The app has used its ${aiCallsPerDay()} AI calls for today. It starts again tomorrow.`);
+  if (usageSummary().today.cost >= aiUsdPerDay()) throw new AiError(`The AI has reached today's spending limit of $${aiUsdPerDay()}. It starts again tomorrow.`);
+  try { mkdirSync(root(), { recursive: true }); writeFileSync(callsFile(), JSON.stringify({ day: c.day, n: c.n + 1 }), { mode: 0o600 }); } catch { /* the check above still ran */ }
+}
+
 /* ---------------- what the rest of the maker calls ---------------- */
 
 type Thinker = (task: Task, system: string, user: string) => Promise<string>;
@@ -219,6 +242,7 @@ let override: Thinker | null = null;
 export function setThinker(fn: Thinker | null): void { override = fn; }
 
 export async function think(task: Task, system: string, user: string, mode: Mode = readMode()): Promise<string> {
+  takeAiCall(system.length + user.length);
   if (override) return override(task, system, user);
   const dev = devProvider();
   const answer = dev ? await dev.think(system, user, (msg) => new AiError(msg, true)) : mode === "byo" ? await byo(task, system, user) : await hosted(task, system, user);

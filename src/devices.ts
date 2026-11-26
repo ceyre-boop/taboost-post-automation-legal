@@ -48,9 +48,13 @@ export function findDeviceByName(name: string, appDir = APP_DIR): Device | null 
   return Object.values(loadDevices(appDir)).find((d) => d.name.toLowerCase() === want) ?? null;
 }
 
+/** Phones one app folder will register. Each one is a Chrome profile and a port on this Mac. */
+export const maxDevices = (): number => { const n = Number(process.env.POSTER_MAX_DEVICES); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 25; };
+
 export function createDevice(name: string, appDir = APP_DIR): Device {
   const clean = cleanName(name);
   const all = loadDevices(appDir);
+  if (Object.keys(all).length >= maxDevices()) throw new Error("This poster already has as many phones as it allows. Use a name that's already on the list.");
   const used = new Set([...Object.values(all).map((d) => d.cdpPort), ...portsInUse(appDir === APP_DIR ? ROOT_DIR : appDir)]);
   let port = FIRST_PORT;
   while (used.has(port)) port++;

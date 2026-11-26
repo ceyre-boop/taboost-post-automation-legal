@@ -36,16 +36,18 @@ function takeLock(): void {
     }
   } catch { /* no lock */ }
   mkdirSync(APP_DIR, { recursive: true });
-  writeFileSync(LOCK_FILE, JSON.stringify({ pid: process.pid, port: Number(arg("port")) || 4747 }));
+  writeFileSync(LOCK_FILE, JSON.stringify({ pid: process.pid, port: Number(arg("port")) || 4747 }), { mode: 0o600 });
   process.on("exit", () => { try { if (JSON.parse(readFileSync(LOCK_FILE, "utf8")).pid === process.pid) unlinkSync(LOCK_FILE); } catch { /* gone */ } });
 }
-/** The key and the link let anyone on the Wi-Fi post: only this Mac's user may read them. */
-for (const f of [TOKEN_FILE, URL_FILE]) { try { if (existsSync(f)) chmodSync(f, 0o600); } catch { /* not ours */ } }
+/** The key and the link let anyone on the Wi-Fi post: only this Mac's user may read them. The .env holds
+ *  the platforms' app secrets, the lock names a process, and the app folder itself is this user's alone. */
+for (const f of [TOKEN_FILE, URL_FILE, ENV_FILE, LOCK_FILE, join(APP_DIR, "secrets.json")]) { try { if (existsSync(f)) chmodSync(f, 0o600); } catch { /* not ours */ } }
+try { mkdirSync(APP_DIR, { recursive: true }); chmodSync(APP_DIR, 0o700); } catch { /* not ours */ }
 
 /** Reuse the saved access key if there is one, so the phone link stays the same. */
 function stableToken(): string {
   try { const t = readFileSync(TOKEN_FILE, "utf8").trim(); if (t) return t; } catch {}
-  const t = randomBytes(9).toString("base64url");
+  const t = randomBytes(18).toString("base64url"); // 144 bits
   try { mkdirSync(APP_DIR, { recursive: true }); writeFileSync(TOKEN_FILE, t, { mode: 0o600 }); chmodSync(TOKEN_FILE, 0o600); } catch {}
   return t;
 }
@@ -57,7 +59,7 @@ const arg = (name: string, fallback?: string): string | undefined => {
 const has = (flag: string) => process.argv.includes(`--${flag}`);
 
 let PORT = Number(arg("port")) || 4747;
-const TOKEN = has("new-key") ? randomBytes(9).toString("base64url") : stableToken();
+const TOKEN = has("new-key") ? randomBytes(18).toString("base64url") : stableToken();
 
 function have(cmd: string): boolean {
   try { return spawnSync("which", [cmd], { stdio: "ignore" }).status === 0; }

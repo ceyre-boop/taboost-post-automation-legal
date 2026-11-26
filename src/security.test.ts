@@ -30,7 +30,7 @@ function send(method: string, path: string, headers: Record<string, string>, bod
     req.end(body);
   });
 }
-const form = (boundary: string, fields: [string, string][]) => fields.map(([k, v]) => `--${boundary}\r\nContent-Disposition: form-data; name="${k}"${k === "videos" ? '; filename="evil.mp4"\r\nContent-Type: video/mp4' : ""}\r\n\r\n${v}\r\n`).join("") + `--${boundary}--\r\n`;
+const form = (boundary: string, fields: [string, string][]) => fields.map(([k, v]) => `--${boundary}\r\nContent-Disposition: form-data; name="${k}"${k === "videos" ? '; filename="evil.mp4"\r\nContent-Type: video/mp4' : ""}\r\n\r\n${k === "videos" ? "\u0000\u0000\u0000\u0018ftypmp42" : ""}${v}\r\n`).join("") + `--${boundary}--\r\n`;
 
 test("the app's own page works: same-origin and header-less local requests are served", async () => {
   assert.equal((await send("GET", "/api/app", {})).status, 200);
@@ -118,7 +118,7 @@ test("odd input is refused politely, not crashed on", async () => {
   const b = "xBx";
   const bad = await send("POST", "/api/batch", { ...own, "content-type": `multipart/form-data; boundary=${b}` }, form(b, [["videos", "x"], ["platforms", "not-a-platform"]]));
   assert.equal(bad.status, 400);
-  assert.equal(existsSync(join(DIR, "uploads")), false, "a refused post writes no file");
+  assert.deepEqual(existsSync(join(DIR, "uploads")) ? readdirSync(join(DIR, "uploads")) : [], [], "a refused post leaves no file behind");
   // A declared body beyond the limit is refused before it is read.
   const big = await new Promise<number>((resolve) => {
     const req = request({ host: "127.0.0.1", port: PORT, method: "POST", path: "/api/batch", headers: { host: `127.0.0.1:${PORT}`, ...own, "content-type": `multipart/form-data; boundary=${b}`, "content-length": String(50 * 1024 ** 3) } }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
@@ -129,6 +129,6 @@ test("odd input is refused politely, not crashed on", async () => {
 });
 
 test("nothing the app keeps holds a password, a token or a cookie", () => {
-  const files = readdirSync(DIR);
+  const files = readdirSync(DIR).filter((f) => f !== "uploads"); // (the uploads folder is empty: the refused post above left nothing in it)
   assert.deepEqual(files.sort(), ["settings.json"]);
 });

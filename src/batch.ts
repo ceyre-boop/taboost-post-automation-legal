@@ -12,8 +12,10 @@ import { sleep } from "./sleep.ts";
 import type { OfficialResult, Song } from "./official/types.ts";
 import { postOfficial } from "./official/post.ts";
 import { spawnSync } from "node:child_process";
+import { markSent, maxPostsPerDay, takePost } from "./limits.ts";
 
 export const BATCHES_DIR = join(APP_DIR, "batches");
+export const MAX_BATCH_VIDEOS = 10;
 const VIDEO_EXTS = new Set([".mp4", ".mov", ".m4v", ".webm"]);
 
 /** "unconfirmed": the publish button was pressed but the app couldn't see the post go up
@@ -24,6 +26,8 @@ export interface BatchItem {
   caption: string;
   platform: string;
   status: ItemStatus;
+  /** sha256 of the uploaded file, so the same video isn't sent to the same place twice in a row */
+  sha?: string;
   note?: string;
   /** "official": through the platform's own API with the phone's permission; else the Mac's browser */
   via?: "official" | "browser";
@@ -95,7 +99,7 @@ export function resolveCaption(videoPath: string, perVideo: string | undefined, 
 
 export interface BatchInput {
   /** `captions` gives one platform its own caption (the post maker writes one per platform). */
-  videos: { path: string; caption?: string; captions?: Record<string, string> }[];
+  videos: { path: string; caption?: string; captions?: Record<string, string>; sha?: string }[];
   platforms: string[];
   live: boolean;
   deleteAfter?: boolean;
@@ -107,13 +111,15 @@ export interface BatchInput {
 export function buildBatch(input: BatchInput): Batch {
   if (!input.videos.length) throw new Error("No videos to post.");
   if (!input.platforms.length) throw new Error("No platforms selected.");
+  if (input.videos.length > MAX_BATCH_VIDEOS) throw new Error(`That's more than ${MAX_BATCH_VIDEOS} videos at once. Post them in smaller groups.`);
+  input = { ...input, platforms: [...new Set(input.platforms)] }; // the same platform twice would post twice
   for (const p of input.platforms) getPlatform(p); // validate ids up front
   const items: BatchItem[] = [];
   for (const v of input.videos) {
     const abs = resolve(v.path);
     if (!existsSync(abs)) throw new Error(`Video not found: ${abs}`);
     const caption = resolveCaption(abs, v.caption, input.sharedCaption ?? "");
-    for (const platform of input.platforms) items.push({ video: abs, caption: v.captions?.[platform] ?? caption, platform, status: "pending" });
+    for (const platform of input.platforms) items.push({ video: abs, caption: v.captions?.[platform] ?? caption, platform, status: "pending", ...(v.sha ? { sha: v.sha } : {}) });
   }
   const batch: Batch = {
     id: batchId(),
@@ -262,6 +268,15 @@ export async function runBatch(
       const wait = Math.round(batch.spaceSec * 1000 * jitter) - (Date.now() - lastPost.get(key)!);
       if (wait > 0) { log(`   …pacing ${item.platform}: ${Math.round(wait / 1000)}s`); await sleep(wait); }
     }
+    // The day's limit for this platform holds however the post got here (phone, dashboard, auto-make, plan, retry).
+    if (live && !takePost(item.platform)) {
+      item.status = "error";
+      item.note = `Daily limit reached: ${item.platform} takes at most ${maxPostsPerDay()} posts a day from this app. It resets at midnight.`;
+      recordPost(item.platform, item.video, item.caption, `error: ${item.note}`, extra(item));
+      log(`✖ ${name} → ${item.platform} — ${item.note}`);
+      saveBatch(batch); onUpdate(batch);
+      return;
+    }
     item.status = "posting"; item.note = undefined;
     saveBatch(batch); onUpdate(batch);
     log(`▶ ${live ? "" : "(dry) "}${name} → ${item.platform}${item.via === "official" ? " (official)" : ""}${item.identityName ? ` as ${item.identityName}` : ""}`);
@@ -274,7 +289,7 @@ export async function runBatch(
       if (r?.link) item.link = r.link;
       if (r?.note) item.note = r.note;
       recordPost(item.platform, item.video, item.caption, item.status === "draft" ? "draft" : item.status === "skipped" ? `skipped: ${item.note ?? ""}` : live ? "posted" : "dry-run", extra(item));
-      if (live && item.status === "done") lastPost.set(key, Date.now());
+      if (live && item.status === "done") { lastPost.set(key, Date.now()); if (item.sha) markSent(item.platform, item.sha, item.caption); }
       log(`${item.status === "draft" ? "✎" : "✓"} ${name} → ${item.platform}${item.note ? ` (${item.note})` : ""}`);
       if (live && batch.deleteAfter && ctx && item.via !== "official" && item.status === "done") {
         // The post is up either way, so a failed delete is a note, not a failed post
@@ -295,6 +310,7 @@ export async function runBatch(
         item.status = "unconfirmed";
         item.note = `UNCONFIRMED: ${msg}`;
         lastPost.set(key, Date.now());
+        if (item.sha) markSent(item.platform, item.sha, item.caption);
         recordPost(item.platform, item.video, item.caption, `unconfirmed: ${msg}`, extra(item));
       } else {
         item.status = "error";
