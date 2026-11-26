@@ -285,7 +285,7 @@ function batchView(entry: BatchRun) {
 const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY", // no other page may put the app in a frame and trick clicks onto it
-  "referrer-policy": "no-referrer",
+  "referrer-policy": "same-origin", // not no-referrer: with it browsers send "Origin: null" on posts, which the remote check refuses
   "cross-origin-resource-policy": "same-origin",
 };
 const PAGE_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
