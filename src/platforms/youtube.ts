@@ -71,14 +71,32 @@ export const youtube: Platform = {
       log(`DRY RUN: visibility set to ${visName}, upload processed. Not clicking Publish.`);
       return;
     }
+    // Found 2026-11-26: pressed while YouTube is still running its checks, Publish only saves a
+    // draft "to publish when the checks finish", and leaving the page then leaves it a draft. So wait
+    // for the checks first (a short clip takes a few minutes); if they never finish, go on anyway.
+    log("Waiting for YouTube's checks to finish before publishing...");
+    await page.locator("ytcp-uploads-dialog").getByText(/Checks complete/i).first().waitFor({ state: "visible", timeout: 10 * 60_000 })
+      .catch(() => log("YouTube's checks didn't finish in 10 minutes; publishing anyway."));
     await done.click();
     input.clicked?.();
     log("Publish clicked. Waiting for YouTube to confirm...");
-    // Either the "Video published" box appears, or the upload dialog simply closes.
-    await Promise.any([
-      page.getByText(/Video published|Published/i).first().waitFor({ state: "visible", timeout: 120_000 }),
-      page.locator("ytcp-uploads-dialog #done-button").first().waitFor({ state: "hidden", timeout: 120_000 }),
-    ]);
+    // Found 2026-11-26: a click while YouTube is still running its checks can leave the video as a
+    // draft (the dialog stays open, or a "publish anyway" box appears). So: watch for the "published"
+    // box or the dialog closing, press any confirm box, and press Publish again if it's still there.
+    // Done when YouTube says so: the "Video published" box, its "Video processing" box (saved, and
+    // public once processed; closed here so nothing is left open), or the upload dialog closing.
+    const published = page.getByText(/Video published|Published/i).first();
+    const processing = page.locator("ytcp-dialog, tp-yt-paper-dialog").filter({ hasText: /Video processing|still processing/i }).first();
+    const dialogDone = page.locator("ytcp-uploads-dialog #done-button").first();
+    const until = Date.now() + 150_000;
+    let ok = false;
+    while (Date.now() < until) {
+      if (await published.isVisible().catch(() => false)) { ok = true; break; }
+      if (await processing.isVisible().catch(() => false)) { ok = true; await processing.getByRole("button", { name: /close/i }).first().click({ timeout: 5000 }).catch(() => {}); break; }
+      if (!(await dialogDone.isVisible().catch(() => false))) { ok = true; break; }
+      await page.waitForTimeout(1500);
+    }
+    if (!ok) throw new Error("YouTube never confirmed the video was published. It may be saved as a draft in YouTube Studio.");
     log("Published.");
   },
 
