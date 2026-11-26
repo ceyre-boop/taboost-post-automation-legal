@@ -4,6 +4,24 @@ Northbound Studio's first automation: add one video, and it goes to every platfo
 
 It was called TABOOST Poster until 2026-11-18. The repo keeps its old name so the published legal pages and download links keep working.
 
+## Limits that stop a huge bill or a flood (security/hardening)
+
+All saved to disk where they count something, so a restart doesn't reset them. Defaults are generous for normal use; set the variable in the environment of the phone remote to change one.
+
+| Limit | Default | Variable |
+|---|---|---|
+| One upload request (and one video) | 3072 MB | `POSTER_MAX_UPLOAD_MB` |
+| Uploaded videos kept on disk at once | 10 GB | `POSTER_MAX_UPLOADS_GB` |
+| Free disk the Mac keeps for itself | 2 GB | `POSTER_MIN_FREE_GB` |
+| Live posts per platform per day | 30 | `POSTER_MAX_POSTS_PER_DAY` |
+| Same video + caption to the same platform again | blocked for 30 min | `POSTER_DUPLICATE_WINDOW_MIN` (0 = off) |
+| AI calls per day / estimated dollars per day | 80 / $5 | `POSTER_AI_MAX_CALLS_PER_DAY`, `POSTER_AI_MAX_USD_PER_DAY` |
+| Wrong keys before a client is locked out (15 min) | 8 per 10 min | `POSTER_KEY_FAILS` |
+| Requests per client per minute | 400 | `POSTER_REQUESTS_PER_MIN` |
+| Phones one app folder registers | 25 | `POSTER_MAX_DEVICES` |
+
+Uploads must be video files (checked by their first bytes, not their name), are streamed to disk, and are deleted if the upload fails. Ordinary requests (everything that isn't a video upload) may carry 1 MB.
+
 ## Official sign-in: Connect on the platform's own page (2026-11-22, branch `official-connect`)
 
 On the phone, **Post to** shows every platform as *Official · <account>*, *The Mac's browser*, or **Connect**. Connect opens the platform's own sign-in in Safari, so saved passwords and Face ID just work, and the phone page updates itself when it's done.
